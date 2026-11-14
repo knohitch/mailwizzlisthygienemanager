@@ -673,30 +673,50 @@ export class MailWizzCompatibilityValidator {
 
     // 7. Mutation capabilities (NEVER executed with write probes; gated cleanly)
     const canOfferMutations = envMutationsEnabled && resolvedAdapter.mutationSafetyAllowed && coreReadOk;
+    const verifiedWrites = params.skipDbLookup
+      ? new Set<string>()
+      : await mailWizzCapabilityRegistry.loadVerifiedWriteCapabilities(
+          versionInfo.effectiveVersion
+        );
     for (const mutKey of [
       'list_creation',
       'subscriber_copying',
       'subscriber_unsubscribe',
-    ] as CapabilityKey[]) {
+    ] as const) {
       const existing = caps.get(mutKey);
+      const isDisposableVerified = canOfferMutations && verifiedWrites.has(mutKey);
       this.updateCap(caps, mutKey, {
-        status: canOfferMutations ? 'AVAILABLE_BUT_UNTESTED' : 'BLOCKED',
+        status: isDisposableVerified
+          ? 'VERIFIED'
+          : canOfferMutations
+            ? 'AVAILABLE_BUT_UNTESTED'
+            : 'BLOCKED',
         testedReadOnly: false,
-        reason: canOfferMutations
-          ? 'Gate enabled and core read contracts passed; execution still requires dry-run snapshot, explicit confirmation, and live pre-mutation safety checks.'
-          : resolvedAdapter.mutationLockReason ||
-            existing?.reason ||
-            'Remote mutations blocked by safety gate.',
+        reason: isDisposableVerified
+          ? `Authorized disposable write verification recorded for MailWizz ${versionInfo.effectiveVersion ?? 'baseline'}.`
+          : canOfferMutations
+            ? 'Gate enabled and core read contracts passed, but write capability remains AVAILABLE_BUT_UNTESTED until verified on an authorized disposable list.'
+            : resolvedAdapter.mutationLockReason ||
+              existing?.reason ||
+              'Remote mutations blocked by safety gate.',
       });
     }
 
-    if (!canOfferMutations && caps.get('segment_creation')?.status !== 'UNSUPPORTED') {
+    if (caps.get('segment_creation')?.status !== 'UNSUPPORTED') {
+      const segVerified = canOfferMutations && verifiedWrites.has('segment_creation');
       this.updateCap(caps, 'segment_creation', {
-        status: 'BLOCKED',
-        reason:
-          resolvedAdapter.mutationLockReason ||
-          caps.get('segment_creation')?.reason ||
-          'Remote mutations blocked.',
+        status: segVerified
+          ? 'VERIFIED'
+          : canOfferMutations
+            ? 'AVAILABLE_BUT_UNTESTED'
+            : 'BLOCKED',
+        reason: segVerified
+          ? `Authorized disposable segment write verification recorded for MailWizz ${versionInfo.effectiveVersion ?? 'baseline'}.`
+          : canOfferMutations
+            ? 'Read-only segment prerequisites passed, but segment creation remains AVAILABLE_BUT_UNTESTED until verified on an authorized disposable list.'
+            : resolvedAdapter.mutationLockReason ||
+              caps.get('segment_creation')?.reason ||
+              'Remote mutations blocked.',
       });
     }
 
@@ -868,8 +888,39 @@ export async function getCompatibilityDashboardData(): Promise<{
       approvedVersionPassedCheck: corePassed,
     });
 
+    const verifiedWrites = await mailWizzCapabilityRegistry.loadVerifiedWriteCapabilities(
+      versionInfo.effectiveVersion
+    );
+    const refreshedCaps = persistedReport.capabilities.map((cap) => {
+      if (cap.category !== 'MUTATIONS' || cap.status === 'UNSUPPORTED') {
+        return cap;
+      }
+      const canOffer =
+        persistedReport.connectionStatus === 'CONNECTED' &&
+        envMut &&
+        resolved.mutationSafetyAllowed &&
+        corePassed;
+      if (!canOffer) {
+        return {
+          ...cap,
+          status: 'BLOCKED' as const,
+        };
+      }
+      if (verifiedWrites.has(cap.key as never)) {
+        return {
+          ...cap,
+          status: 'VERIFIED' as const,
+        };
+      }
+      return {
+        ...cap,
+        status: 'AVAILABLE_BUT_UNTESTED' as const,
+      };
+    });
+
     const refreshedReport: CompatibilityReport = {
       ...persistedReport,
+      capabilities: refreshedCaps,
       versionInfo,
       adapterMode:
         persistedReport.connectionStatus === 'NOT_CONFIGURED'

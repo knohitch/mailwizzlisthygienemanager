@@ -7,6 +7,7 @@ import { encryptSecret, maskSecretLast4 } from '@/services/security/crypto';
 import { recordAuditLog } from '@/services/security/audit';
 import { normalizeMailWizzBaseUrl } from '@/services/mailwizz/client';
 import { recomputeAllHygieneClassifications } from '@/services/analysis/classifier';
+import { mailWizzCapabilityRegistry } from '@/services/mailwizz/capability-registry';
 import { isMailWizzMutationsEnabled } from '@/services/mutations/gate';
 
 const SettingsUpdateSchema = z.object({
@@ -237,6 +238,11 @@ export async function PUT(req: NextRequest) {
         checkedAt: new Date(),
         notes: 'Reset after MailWizz URL/credential/auth change; re-run validation or Compatibility Check.',
       },
+    });
+    await mailWizzCapabilityRegistry.invalidateCachedCompatibility({
+      actorEmail: auth.session.adminEmail,
+      ipAddress: auth.ip,
+      reason: 'MailWizz API URL, credential, or auth mode changed in Settings.',
     });
   }
 

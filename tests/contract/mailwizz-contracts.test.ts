@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { resetEnvCacheForTests } from '@/lib/env';
 import {
   MailWizzV3Adapter,
   mailWizzV3Adapter,
@@ -341,6 +342,7 @@ describe('MailWizz Compatibility Contract & Regression Suite', () => {
   it('10. preserves MailWizz 3.0.5 unsubscribe behavior with 404/405 POST-or-PUT fallback while respecting read-only lock', async () => {
     const prevEnv = process.env.ENABLE_MAILWIZZ_MUTATIONS;
     process.env.ENABLE_MAILWIZZ_MUTATIONS = 'true';
+    resetEnvCacheForTests();
     try {
       let calls = 0;
       const writer = new MailWizzMutationClient({
@@ -373,6 +375,7 @@ describe('MailWizz Compatibility Contract & Regression Suite', () => {
       expect(calls).toBe(2);
     } finally {
       process.env.ENABLE_MAILWIZZ_MUTATIONS = prevEnv;
+      resetEnvCacheForTests();
     }
   });
 
@@ -680,6 +683,7 @@ describe('MailWizz Compatibility Contract & Regression Suite', () => {
   it('17. requires verified acceptedCount and target-list membership before considering a subscriber moved', async () => {
     const prevEnv = process.env.ENABLE_MAILWIZZ_MUTATIONS;
     process.env.ENABLE_MAILWIZZ_MUTATIONS = 'true';
+    resetEnvCacheForTests();
     try {
       const writer = new MailWizzMutationClient({
         apiUrl: 'https://mw.example.com/api/index.php',
@@ -725,6 +729,7 @@ describe('MailWizz Compatibility Contract & Regression Suite', () => {
       expect(confirmedMember.subscriberUid).toBe('sb_target_1');
     } finally {
       process.env.ENABLE_MAILWIZZ_MUTATIONS = prevEnv;
+      resetEnvCacheForTests();
     }
   });
 });

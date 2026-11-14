@@ -235,7 +235,28 @@ describe('Phase 3.3 Isolated Deployment, Per-Operation Guard & Demo Isolation Re
     process.env.ENABLE_MAILWIZZ_MUTATIONS = 'true';
     resetEnvCacheForTests();
 
-    // Version-level approval + UNSUBSCRIBE capability passes
+    // AVAILABLE_BUT_UNTESTED must STILL be blocked even when the version is approved
+    await expect(
+      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')
+    ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
+
+    // Once subscriber_unsubscribe is VERIFIED via disposable testing, UNSUBSCRIBE passes
+    const verifiedReport: CompatibilityReport = {
+      ...partialReport,
+      capabilities: partialReport.capabilities.map((cap) =>
+        cap.key === 'subscriber_unsubscribe'
+          ? {
+              ...cap,
+              status: 'VERIFIED' as const,
+              reason: 'Verified via authorized disposable list test',
+            }
+          : cap
+      ),
+    };
+    await mailWizzCapabilityRegistry.saveCompatibilityReport({
+      report: verifiedReport,
+      actorEmail: P33_ACTOR,
+    });
     await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).resolves.toBeUndefined();
 
     // Per-operation checks still block UNSUPPORTED operations on the same approved version

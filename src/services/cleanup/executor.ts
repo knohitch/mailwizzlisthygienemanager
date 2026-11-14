@@ -12,6 +12,7 @@ import {
 } from '@/services/mutations/gate';
 import { mapStrictMailWizzSubscriberStatus } from '@/services/mailwizz/adapter-v3';
 import { recordAuditLog } from '@/services/security/audit';
+import { decryptSecret, sha256Hex } from '@/services/security/crypto';
 import { logger } from '@/services/security/logger';
 import {
   evaluateActionEligibility,
@@ -42,6 +43,18 @@ export async function executeCleanupOperation(params: {
   if (!op) throw new Error(`CleanupOperation ${params.operationId} not found.`);
   if (op.dryRunOnly) {
     throw new Error('Cannot execute a DRY RUN operation without explicit confirmation.');
+  }
+  if (!op.confirmedByEmail || !op.confirmedAt || !op.confirmedListName) {
+    throw new Error('Cleanup operation lacks mandatory administrator confirmation metadata.');
+  }
+  if (!op.snapshotEnc || !op.snapshotSha256) {
+    throw new Error('Cleanup operation lacks verified pre-change snapshot.');
+  }
+  const decryptedSnapshot = decryptSecret(op.snapshotEnc);
+  if (sha256Hex(decryptedSnapshot) !== op.snapshotSha256) {
+    throw new Error(
+      'Safety lock: approved pre-change snapshot checksum mismatch; aborting execution.'
+    );
   }
   if (op.status === 'COMPLETED' || op.status === 'CANCELLED') {
     return {

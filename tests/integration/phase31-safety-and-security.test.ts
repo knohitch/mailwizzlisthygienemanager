@@ -17,6 +17,7 @@ import { importAlibabaDirectMailCsv } from '@/services/deliverability/alibaba-di
 import { importVerifiedCampaignReport } from '@/services/mailwizz/report-import';
 import { MailWizzClient, ReadOnlyGuardError } from '@/services/mailwizz/client';
 import { MailWizzMutationClient } from '@/services/mutations/mailwizz-writer';
+import { mailWizzCapabilityRegistry } from '@/services/mailwizz/capability-registry';
 import { sanitizeCsvCell } from '@/services/security/csv';
 import { encryptSecret } from '@/services/security/crypto';
 import { sanitizeForLog } from '@/services/security/logger';
@@ -339,6 +340,60 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
     });
 
     try {
+      const nowIso = new Date().toISOString();
+      await mailWizzCapabilityRegistry.saveCompatibilityReport({
+        actorEmail: 'p31-compat-fixture@local.hygiene',
+        report: {
+          overallStatus: 'FULLY VERIFIED',
+          adapterInUse: 'MailWizz 3.x REST Adapter (mailwizz-v3)',
+          adapterMode: 'VERIFIED_NATIVE',
+          connectionStatus: 'CONNECTED',
+          versionInfo: {
+            configuredVersion: '3.0.5',
+            detectedVersion: '3.0.5',
+            approvedVersion: '3.0.5',
+            effectiveVersion: '3.0.5',
+            source: 'API_HEADER_OR_META',
+            verifiedByApiSignal: true,
+            parsed: {
+              raw: '3.0.5',
+              major: 3,
+              minor: 0,
+              patch: 5,
+              prerelease: null,
+              classification: 'BASELINE_3_0_5',
+              isBaseline305: true,
+              isVerifiedLineage: true,
+            },
+            upgradeDetected: false,
+            upgradeSummary: null,
+          },
+          mutationSafetyAllowed: true,
+          mutationLockReason: null,
+          historicalEngagementAvailable: true,
+          historicalEngagementSummary: 'Verified Phase 3.1 test fixture',
+          capabilities: mailWizzCapabilityRegistry.buildBaselineEntries().map((cap) =>
+            cap.key === 'list_discovery' ||
+            cap.key === 'subscriber_retrieval' ||
+            cap.key === 'subscriber_pagination' ||
+            cap.key === 'subscriber_status_retrieval' ||
+            cap.key === 'subscriber_unsubscribe'
+              ? {
+                  ...cap,
+                  status: 'VERIFIED' as const,
+                  testedReadOnly: cap.key !== 'subscriber_unsubscribe',
+                  reason: 'Verified mock fixture capability',
+                  lastCheckedAt: nowIso,
+                }
+              : cap
+          ),
+          warnings: [],
+          requiredManualActions: [],
+          additiveFieldsObserved: [],
+          lastVerifiedAt: nowIso,
+        },
+      });
+
       await confirmAndEnqueueCleanup({
         operationId: dryOp.id,
         confirmedListName: 'Phase31 Scope List A',
@@ -384,6 +439,12 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
         })
       ).rejects.toThrow(/consent compliance/i);
     } finally {
+      await prisma.auditLog.deleteMany({
+        where: {
+          actorEmail: 'p31-compat-fixture@local.hygiene',
+          action: 'MAILWIZZ_COMPATIBILITY_CHECK',
+        },
+      });
       process.env.ENABLE_MAILWIZZ_MUTATIONS = 'false';
       resetEnvCacheForTests();
     }
@@ -477,6 +538,12 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
         )
       ).rejects.toThrow(/permanently blocked/i);
     } finally {
+      await prisma.auditLog.deleteMany({
+        where: {
+          actorEmail: 'p31-compat-fixture@local.hygiene',
+          action: 'MAILWIZZ_COMPATIBILITY_CHECK',
+        },
+      });
       process.env.ENABLE_MAILWIZZ_MUTATIONS = 'false';
       resetEnvCacheForTests();
     }

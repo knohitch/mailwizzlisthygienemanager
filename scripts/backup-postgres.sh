@@ -2,6 +2,7 @@
 # PostgreSQL logical backup script for MailWizz List Hygiene Manager
 # Never stores raw credentials in script; reads POSTGRES_* from .env or environment.
 set -eu
+umask 077
 
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 mkdir -p "$BACKUP_DIR"

@@ -15,6 +15,7 @@ import { runMailWizzSync } from '@/services/mailwizz/sync';
 import {
   assertCompatibilityPermitsRemoteMutations,
   createConfiguredMutationClient,
+  MutationGateLockedError,
   UnsafeOperationBlockedError,
 } from '@/services/mutations/gate';
 import { inspectHistoricalSources } from '@/services/mailwizz/historical-sources';
@@ -111,6 +112,8 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
                 'MAILWIZZ_COMPATIBILITY_CONFIG',
                 'MAILWIZZ_COMPATIBILITY_CHECK',
                 'MAILWIZZ_VERSION_APPROVED',
+                'MAILWIZZ_WRITE_CAPABILITY_VERIFIED',
+                'MAILWIZZ_COMPATIBILITY_RESET',
               ],
             },
           },
@@ -275,12 +278,50 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
     expect(v305Report.overallStatus).toBe('FULLY VERIFIED');
     expect(v305Report.mutationSafetyAllowed).toBe(true);
 
-    // Save 3.0.5 report -> assertion permits remote mutations when enabled
+    // Save 3.0.5 report -> while ENABLE_MAILWIZZ_MUTATIONS=false, global lock rejects first
     await mailWizzCapabilityRegistry.saveCompatibilityReport({
       report: v305Report,
       actorEmail: TEST_ACTOR,
     });
-    await expect(assertCompatibilityPermitsRemoteMutations()).resolves.toBeUndefined();
+    process.env.ENABLE_MAILWIZZ_MUTATIONS = 'false';
+    resetEnvCacheForTests();
+    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).rejects.toBeInstanceOf(
+      MutationGateLockedError
+    );
+
+    // Even when ENABLE_MAILWIZZ_MUTATIONS=true, AVAILABLE_BUT_UNTESTED remains blocked
+    process.env.ENABLE_MAILWIZZ_MUTATIONS = 'true';
+    resetEnvCacheForTests();
+    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).rejects.toBeInstanceOf(
+      UnsafeOperationBlockedError
+    );
+
+    // Record disposable write verification for subscriber_unsubscribe -> re-validate -> UNSUBSCRIBE permitted, CREATE_SEGMENT still blocked
+    await mailWizzCapabilityRegistry.recordDisposableWriteVerification({
+      capabilityKey: 'subscriber_unsubscribe',
+      approvedVersion: '3.0.5',
+      disposableListUid: 'disposable_test_list',
+      evidence: 'Verified unsubscribe on disposable test subscriber',
+      actorEmail: TEST_ACTOR,
+    });
+    const v305WithVerifiedUnsub = await mailWizzCompatibilityValidator.validate({
+      client: mockV305Client,
+      configuredVersion: '3.0.5',
+      approvedVersion: '3.0.5',
+      webhookConfigured: true,
+      envMutationsEnabled: true,
+    });
+    expect(
+      v305WithVerifiedUnsub.capabilities.find((c) => c.key === 'subscriber_unsubscribe')?.status
+    ).toBe('VERIFIED');
+    await mailWizzCapabilityRegistry.saveCompatibilityReport({
+      report: v305WithVerifiedUnsub,
+      actorEmail: TEST_ACTOR,
+    });
+    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).resolves.toBeUndefined();
+    await expect(assertCompatibilityPermitsRemoteMutations('CREATE_SEGMENT')).rejects.toBeInstanceOf(
+      UnsafeOperationBlockedError
+    );
 
     // Now simulate MailWizz silently upgrading to synthetic 4.0.0 -> fail closed!
     const v4Report = await mailWizzCompatibilityValidator.validate({
@@ -322,10 +363,10 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
 
     process.env.ENABLE_MAILWIZZ_MUTATIONS = 'true';
     resetEnvCacheForTests();
-    await expect(assertCompatibilityPermitsRemoteMutations()).rejects.toBeInstanceOf(
+    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).rejects.toBeInstanceOf(
       UnsafeOperationBlockedError
     );
-    await expect(createConfiguredMutationClient()).rejects.toBeInstanceOf(
+    await expect(createConfiguredMutationClient('UNSUBSCRIBE')).rejects.toBeInstanceOf(
       UnsafeOperationBlockedError
     );
 

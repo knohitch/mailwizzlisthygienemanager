@@ -5,7 +5,10 @@ import {
   getCompatibilityDashboardData,
   runReadOnlyCompatibilityCheck,
 } from '@/services/mailwizz/compatibility-validator';
-import { mailWizzCapabilityRegistry } from '@/services/mailwizz/capability-registry';
+import {
+  mailWizzCapabilityRegistry,
+  WRITABLE_CAPABILITY_KEYS,
+} from '@/services/mailwizz/capability-registry';
 
 const CompatibilityActionSchema = z.discriminatedUnion('action', [
   z.object({
@@ -19,6 +22,12 @@ const CompatibilityActionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('APPROVE_VERSION'),
     version: z.string().trim().min(1).max(40),
+  }),
+  z.object({
+    action: z.literal('VERIFY_WRITE_CAPABILITY'),
+    capabilityKey: z.enum(WRITABLE_CAPABILITY_KEYS),
+    disposableListUid: z.string().trim().min(1).max(100),
+    evidence: z.string().trim().min(5).max(500),
   }),
 ]);
 
@@ -72,6 +81,42 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         data: updated,
+      });
+    }
+
+    if (parsed.data.action === 'VERIFY_WRITE_CAPABILITY') {
+      const current = await getCompatibilityDashboardData();
+      const latestReport = current.report;
+      const activeVersion = latestReport.versionInfo.effectiveVersion;
+      if (
+        latestReport.connectionStatus !== 'CONNECTED' ||
+        latestReport.adapterMode !== 'VERIFIED_NATIVE' ||
+        !latestReport.versionInfo.approvedVersion ||
+        latestReport.versionInfo.upgradeDetected ||
+        !activeVersion
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              'Cannot verify an individual write capability until a connected MailWizz version has passed read-only checks and administrator version approval.',
+          },
+          { status: 400 }
+        );
+      }
+
+      await mailWizzCapabilityRegistry.recordDisposableWriteVerification({
+        capabilityKey: parsed.data.capabilityKey,
+        approvedVersion: activeVersion,
+        disposableListUid: parsed.data.disposableListUid,
+        evidence: parsed.data.evidence,
+        actorEmail: auth.session.adminEmail,
+        ipAddress: auth.ip,
+      });
+
+      const refreshed = await getCompatibilityDashboardData();
+      return NextResponse.json({
+        ok: true,
+        data: refreshed,
       });
     }
 

@@ -17,6 +17,7 @@ import {
   resumeCleanupOperation,
 } from '@/services/cleanup/restore';
 import { MailWizzMutationClient } from '@/services/mutations/mailwizz-writer';
+import { mailWizzCapabilityRegistry } from '@/services/mailwizz/capability-registry';
 import {
   approveReengagementCampaignManually,
   createReengagementPlan,
@@ -413,7 +414,61 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
   it('reconciles ambiguous API failures and auto-stops on high failure rates (mocked MailWizz writer)', async () => {
     process.env.ENABLE_MAILWIZZ_MUTATIONS = 'true';
     resetEnvCacheForTests();
+    const p2Actor = 'admin@test.local';
     try {
+      const nowIso = new Date().toISOString();
+      await mailWizzCapabilityRegistry.saveCompatibilityReport({
+        actorEmail: p2Actor,
+        report: {
+          overallStatus: 'FULLY VERIFIED',
+          adapterInUse: 'MailWizz 3.x REST Adapter (mailwizz-v3)',
+          adapterMode: 'VERIFIED_NATIVE',
+          connectionStatus: 'CONNECTED',
+          versionInfo: {
+            configuredVersion: '3.0.5',
+            detectedVersion: '3.0.5',
+            approvedVersion: '3.0.5',
+            effectiveVersion: '3.0.5',
+            source: 'API_HEADER_OR_META',
+            verifiedByApiSignal: true,
+            parsed: {
+              raw: '3.0.5',
+              major: 3,
+              minor: 0,
+              patch: 5,
+              prerelease: null,
+              classification: 'BASELINE_3_0_5',
+              isBaseline305: true,
+              isVerifiedLineage: true,
+            },
+            upgradeDetected: false,
+            upgradeSummary: null,
+          },
+          mutationSafetyAllowed: true,
+          mutationLockReason: null,
+          historicalEngagementAvailable: true,
+          historicalEngagementSummary: 'Verified Phase 2 test fixture',
+          capabilities: mailWizzCapabilityRegistry.buildBaselineEntries().map((cap) =>
+            cap.key === 'list_discovery' ||
+            cap.key === 'subscriber_retrieval' ||
+            cap.key === 'subscriber_pagination' ||
+            cap.key === 'subscriber_status_retrieval' ||
+            cap.key === 'subscriber_unsubscribe'
+              ? {
+                  ...cap,
+                  status: 'VERIFIED' as const,
+                  testedReadOnly: cap.key !== 'subscriber_unsubscribe',
+                  reason: 'Verified mock fixture capability',
+                  lastCheckedAt: nowIso,
+                }
+              : cap
+          ),
+          warnings: [],
+          requiredManualActions: [],
+          additiveFieldsObserved: [],
+          lastVerifiedAt: nowIso,
+        },
+      });
       const op = await previewCleanupOperation({
         actionType: 'UNSUBSCRIBE',
         mailingListId: listAId,
@@ -499,6 +554,9 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
         })
       ).rejects.toThrow(/cannot be automatically re-subscribed/i);
     } finally {
+      await prisma.auditLog.deleteMany({
+        where: { actorEmail: p2Actor, action: 'MAILWIZZ_COMPATIBILITY_CHECK' },
+      });
       process.env.ENABLE_MAILWIZZ_MUTATIONS = 'false';
       resetEnvCacheForTests();
     }

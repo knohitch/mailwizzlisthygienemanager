@@ -32,41 +32,41 @@ export type RemoteMutationOperation =
 const OPERATION_CAPABILITY_REQUIREMENTS: Record<
   RemoteMutationOperation,
   {
-    requiredVerified: CapabilityKey[];
-    requiredAvailable: CapabilityKey[];
+    requiredVerifiedReads: CapabilityKey[];
+    requiredVerifiedWrites: CapabilityKey[];
   }
 > = {
   UNSUBSCRIBE: {
-    requiredVerified: [
+    requiredVerifiedReads: [
       'list_discovery',
       'subscriber_retrieval',
       'subscriber_status_retrieval',
     ],
-    requiredAvailable: ['subscriber_unsubscribe'],
+    requiredVerifiedWrites: ['subscriber_unsubscribe'],
   },
   COPY_SUBSCRIBERS: {
-    requiredVerified: [
+    requiredVerifiedReads: [
       'list_discovery',
       'subscriber_retrieval',
       'subscriber_status_retrieval',
     ],
-    requiredAvailable: ['subscriber_copying'],
+    requiredVerifiedWrites: ['subscriber_copying'],
   },
   CREATE_LIST: {
-    requiredVerified: ['list_discovery'],
-    requiredAvailable: ['list_creation'],
+    requiredVerifiedReads: ['list_discovery'],
+    requiredVerifiedWrites: ['list_creation'],
   },
   MOVE_SUBSCRIBERS: {
-    requiredVerified: [
+    requiredVerifiedReads: [
       'list_discovery',
       'subscriber_retrieval',
       'subscriber_status_retrieval',
     ],
-    requiredAvailable: ['subscriber_copying', 'subscriber_unsubscribe'],
+    requiredVerifiedWrites: ['subscriber_copying', 'subscriber_unsubscribe'],
   },
   CREATE_SEGMENT: {
-    requiredVerified: ['list_discovery', 'segment_discovery'],
-    requiredAvailable: ['segment_creation'],
+    requiredVerifiedReads: ['list_discovery', 'segment_discovery'],
+    requiredVerifiedWrites: ['segment_creation'],
   },
 };
 
@@ -77,38 +77,37 @@ export function assertOperationCapabilitiesInReport(
   const reqs = OPERATION_CAPABILITY_REQUIREMENTS[operation];
   const capMap = new Map(report.capabilities.map((c) => [c.key, c]));
 
-  for (const key of reqs.requiredVerified) {
+  for (const key of reqs.requiredVerifiedReads) {
     const cap = capMap.get(key);
     if (!cap || cap.status !== 'VERIFIED') {
       throw new UnsafeOperationBlockedError(
-        `Remote ${operation} blocked: required prerequisite capability "${cap?.label ?? key}" is ${cap?.status ?? 'UNKNOWN'} (must be VERIFIED even when the MailWizz version is approved).`
+        `Remote ${operation} blocked: required read capability "${cap?.label ?? key}" is ${cap?.status ?? 'UNKNOWN'} (must be VERIFIED even when the MailWizz version is approved).`
       );
     }
   }
 
-  for (const key of reqs.requiredAvailable) {
+  for (const key of reqs.requiredVerifiedWrites) {
     const cap = capMap.get(key);
-    if (
-      !cap ||
-      cap.status === 'UNSUPPORTED' ||
-      cap.status === 'UNKNOWN' ||
-      cap.status === 'BLOCKED'
-    ) {
+    if (!cap || cap.status !== 'VERIFIED') {
       throw new UnsafeOperationBlockedError(
-        `Remote ${operation} blocked: operation capability "${cap?.label ?? key}" is ${cap?.status ?? 'UNKNOWN'} (${cap?.reason ?? 'per-operation verification failed'}).`
+        `Remote ${operation} blocked: write capability "${cap?.label ?? key}" is ${cap?.status ?? 'UNKNOWN'} (must be VERIFIED through authorized disposable testing; AVAILABLE_BUT_UNTESTED and version approval alone cannot authorize remote writes).`
       );
     }
   }
 }
 
 /**
- * Verifies version compatibility AND per-operation capability contracts allow remote mutations
- * (fail-closed on unverified major releases, custom versions, missing per-op capabilities, or failed contracts).
+ * Verifies global mutation gate, approved compatible version, verified read contracts,
+ * and verified per-operation write capability before allowing any remote subscriber mutation.
  */
 export async function assertCompatibilityPermitsRemoteMutations(
   operation?: RemoteMutationOperation,
   options?: { requireConnectedReport?: boolean }
 ): Promise<void> {
+  if (!isMailWizzMutationsEnabled()) {
+    throw new MutationGateLockedError(operation ?? 'REMOTE_MUTATION');
+  }
+
   const [cfg, compatCfg, latestReport] = await Promise.all([
     prisma.appConfig.findUnique({ where: { id: 'default' } }),
     mailWizzCapabilityRegistry.loadCompatibilityConfig(),
@@ -116,9 +115,27 @@ export async function assertCompatibilityPermitsRemoteMutations(
   ]);
 
   if (latestReport && latestReport.connectionStatus !== 'NOT_CONFIGURED') {
-    if (latestReport.overallStatus === 'INCOMPATIBLE') {
+    if (latestReport.connectionStatus !== 'CONNECTED') {
       throw new UnsafeOperationBlockedError(
-        'Remote MailWizz mutations blocked fail-closed: latest Compatibility Check reported INCOMPATIBLE contracts.'
+        `Remote ${operation ?? 'mutation'} blocked fail-closed: MailWizz connection status is ${latestReport.connectionStatus}.`
+      );
+    }
+    if (
+      latestReport.overallStatus === 'INCOMPATIBLE' ||
+      latestReport.overallStatus === 'UNVERIFIED'
+    ) {
+      throw new UnsafeOperationBlockedError(
+        `Remote ${operation ?? 'mutation'} blocked fail-closed: latest Compatibility Check verdict is ${latestReport.overallStatus}.`
+      );
+    }
+    if (
+      latestReport.adapterMode !== 'VERIFIED_NATIVE' ||
+      !latestReport.versionInfo.approvedVersion ||
+      latestReport.versionInfo.upgradeDetected
+    ) {
+      throw new UnsafeOperationBlockedError(
+        latestReport.mutationLockReason ||
+          'Remote MailWizz mutations blocked: active MailWizz version is not verified and explicitly approved.'
       );
     }
     if (!latestReport.mutationSafetyAllowed) {
@@ -127,15 +144,18 @@ export async function assertCompatibilityPermitsRemoteMutations(
           'Remote MailWizz mutations are locked until the connected version passes compatibility verification and administrator approval.'
       );
     }
-    if (operation) {
-      assertOperationCapabilitiesInReport(latestReport, operation);
+    if (!operation) {
+      throw new UnsafeOperationBlockedError(
+        'Remote MailWizz mutations require specifying an explicit operation capability to authorize.'
+      );
     }
+    assertOperationCapabilitiesInReport(latestReport, operation);
     return;
   }
 
-  if (options?.requireConnectedReport) {
+  if (options?.requireConnectedReport ?? true) {
     throw new UnsafeOperationBlockedError(
-      `Remote ${operation ?? 'mutation'} blocked fail-closed: run a live connected read-only Compatibility Check before permitting remote MailWizz writes.`
+      `Remote ${operation ?? 'mutation'} blocked fail-closed: run a live connected read-only Compatibility Check and verify the write capability on a disposable list before permitting remote MailWizz writes.`
     );
   }
 

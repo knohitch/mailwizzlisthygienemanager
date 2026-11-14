@@ -1,11 +1,21 @@
 import type { CapabilityStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { isMailWizzMutationsEnabled } from '@/services/mutations/mailwizz-writer';
 import type {
   CapabilityCheckEntry,
   CapabilityKey,
   CompatibilityCapabilityStatus,
   CompatibilityReport,
 } from './contracts';
+
+export const WRITABLE_CAPABILITY_KEYS = [
+  'list_creation',
+  'subscriber_copying',
+  'subscriber_unsubscribe',
+  'segment_creation',
+] as const;
+
+export type WritableCapabilityKey = (typeof WRITABLE_CAPABILITY_KEYS)[number];
 
 export interface CapabilityDefinitionMeta {
   key: CapabilityKey;
@@ -264,7 +274,40 @@ export class MailWizzCapabilityRegistry {
     }
   }
 
+  async getLatestCompatibilityResetAt(): Promise<Date | null> {
+    const latestReset = await prisma.auditLog.findFirst({
+      where: {
+        action: 'MAILWIZZ_COMPATIBILITY_RESET',
+        resourceType: 'MailWizzCompatibility',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return latestReset?.createdAt ?? null;
+  }
+
+  async invalidateCachedCompatibility(params: {
+    actorEmail: string;
+    ipAddress?: string | null;
+    reason: string;
+  }): Promise<void> {
+    await prisma.auditLog.create({
+      data: {
+        actorEmail: params.actorEmail,
+        action: 'MAILWIZZ_COMPATIBILITY_RESET',
+        resourceType: 'MailWizzCompatibility',
+        resourceId: 'default',
+        outcome: 'SUCCESS',
+        ipAddress: params.ipAddress ?? null,
+        detailsJson: {
+          reason: params.reason,
+          resetAt: new Date().toISOString(),
+        } as Prisma.InputJsonValue,
+      },
+    });
+  }
+
   async loadCompatibilityConfig(): Promise<PersistedCompatibilityConfig> {
+    const resetAt = await this.getLatestCompatibilityResetAt();
     const latestConfig = await prisma.auditLog.findFirst({
       where: {
         action: 'MAILWIZZ_COMPATIBILITY_CONFIG',
@@ -278,6 +321,7 @@ export class MailWizzCapabilityRegistry {
         action: 'MAILWIZZ_VERSION_APPROVED',
         resourceType: 'MailWizzCompatibility',
         outcome: 'SUCCESS',
+        ...(resetAt ? { createdAt: { gt: resetAt } } : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -353,10 +397,12 @@ export class MailWizzCapabilityRegistry {
   }
 
   async loadLatestCompatibilityReport(): Promise<CompatibilityReport | null> {
+    const resetAt = await this.getLatestCompatibilityResetAt();
     const latest = await prisma.auditLog.findFirst({
       where: {
         action: 'MAILWIZZ_COMPATIBILITY_CHECK',
         resourceType: 'MailWizzCompatibility',
+        ...(resetAt ? { createdAt: { gt: resetAt } } : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -366,6 +412,112 @@ export class MailWizzCapabilityRegistry {
     }
 
     return latest.detailsJson as unknown as CompatibilityReport;
+  }
+
+  async recordDisposableWriteVerification(params: {
+    capabilityKey: WritableCapabilityKey;
+    approvedVersion: string;
+    disposableListUid: string;
+    evidence: string;
+    actorEmail: string;
+    ipAddress?: string | null;
+  }): Promise<void> {
+    if (!isMailWizzMutationsEnabled()) {
+      throw new Error(
+        'Cannot verify live write capability while ENABLE_MAILWIZZ_MUTATIONS=false.'
+      );
+    }
+    const cleanUid = params.disposableListUid.trim();
+    if (!cleanUid || cleanUid.startsWith('demo-')) {
+      throw new Error(
+        'A valid non-demo disposable test list UID is required for write capability verification.'
+      );
+    }
+    const demoListMatch = await prisma.mailingList.findFirst({
+      where: { listUid: cleanUid, isDemoData: true },
+      select: { id: true },
+    });
+    if (demoListMatch) {
+      throw new Error(
+        `List "${cleanUid}" belongs to synthetic demo data and cannot be used to verify live MailWizz write capabilities.`
+      );
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        actorEmail: params.actorEmail,
+        action: 'MAILWIZZ_WRITE_CAPABILITY_VERIFIED',
+        resourceType: 'MailWizzCompatibility',
+        resourceId: params.capabilityKey,
+        outcome: 'SUCCESS',
+        ipAddress: params.ipAddress ?? null,
+        detailsJson: {
+          capabilityKey: params.capabilityKey,
+          verifiedVersion: params.approvedVersion,
+          disposableListUid: cleanUid,
+          evidence: params.evidence.trim(),
+          verifiedAt: new Date().toISOString(),
+          verifiedByEmail: params.actorEmail,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    await prisma.apiCapabilityCheck.upsert({
+      where: { capabilityKey: params.capabilityKey },
+      update: {
+        status: 'VERIFIED',
+        checkedAt: new Date(),
+        notes: `[VERIFIED] Authorized disposable write test passed on list ${cleanUid} for v${params.approvedVersion}: ${params.evidence.trim()}`.slice(
+          0,
+          1000
+        ),
+      },
+      create: {
+        capabilityKey: params.capabilityKey,
+        category: 'MUTATIONS',
+        endpointOrFeature: params.capabilityKey,
+        status: 'VERIFIED',
+        notes: `[VERIFIED] Authorized disposable write test passed on list ${cleanUid} for v${params.approvedVersion}`.slice(
+          0,
+          1000
+        ),
+      },
+    });
+  }
+
+  async loadVerifiedWriteCapabilities(
+    version: string | null | undefined
+  ): Promise<Set<WritableCapabilityKey>> {
+    const out = new Set<WritableCapabilityKey>();
+    if (!version || !isMailWizzMutationsEnabled()) return out;
+
+    const resetAt = await this.getLatestCompatibilityResetAt();
+    const rows = await prisma.auditLog.findMany({
+      where: {
+        action: 'MAILWIZZ_WRITE_CAPABILITY_VERIFIED',
+        resourceType: 'MailWizzCompatibility',
+        outcome: 'SUCCESS',
+        ...(resetAt ? { createdAt: { gt: resetAt } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 40,
+    });
+
+    for (const r of rows) {
+      const details =
+        r.detailsJson && typeof r.detailsJson === 'object'
+          ? (r.detailsJson as Record<string, unknown>)
+          : null;
+      if (
+        details &&
+        details.verifiedVersion === version &&
+        typeof details.capabilityKey === 'string' &&
+        (WRITABLE_CAPABILITY_KEYS as readonly string[]).includes(details.capabilityKey)
+      ) {
+        out.add(details.capabilityKey as WritableCapabilityKey);
+      }
+    }
+    return out;
   }
 
   async approveVersion(params: {
