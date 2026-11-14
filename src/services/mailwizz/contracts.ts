@@ -217,7 +217,7 @@ export interface InternalCampaignStats {
 export interface InternalBounceRecord {
   subscriberUid: string;
   email: string | null;
-  bounceType: 'hard' | 'soft' | 'internal';
+  bounceType: 'hard' | 'soft' | 'internal' | 'unknown';
   message: string;
   processed: string;
   additiveFields: string[];

@@ -5,6 +5,7 @@ import {
   normalizeMailWizzBounceRecord,
   normalizeMailWizzEnvelope,
   normalizeMailWizzListRecord,
+  normalizeMailWizzSingleRecordEnvelope,
   normalizeMailWizzSubscriberRecord,
   pickFirstString,
 } from './compat';
@@ -267,8 +268,14 @@ export class MailWizzV3Adapter implements MailWizzAdapter {
       });
     }
 
+    const nextPagePre =
+      dataObj.next_page === null || dataObj.next_page === undefined
+        ? null
+        : Math.trunc(coerceNumberFromMailWizz(dataObj.next_page, 0)) || null;
     const totalPagesRaw =
-      dataObj.total_pages === undefined ? 1 : coerceNumberFromMailWizz(dataObj.total_pages, -1);
+      dataObj.total_pages === undefined
+        ? Math.max(1, nextPagePre ?? 1)
+        : coerceNumberFromMailWizz(dataObj.total_pages, -1);
     const currentPageRaw =
       dataObj.current_page === undefined ? 1 : coerceNumberFromMailWizz(dataObj.current_page, -1);
 
@@ -440,7 +447,7 @@ export class MailWizzV3Adapter implements MailWizzAdapter {
     raw: unknown,
     endpoint = '/lists/{uid}'
   ): ContractValidationResult<InternalMailingList> {
-    const env = normalizeMailWizzEnvelope(raw) as Record<string, unknown>;
+    const env = normalizeMailWizzSingleRecordEnvelope(raw) as Record<string, unknown>;
     const record =
       env?.data && typeof env.data === 'object'
         ? (env.data as Record<string, unknown>).record
@@ -572,7 +579,7 @@ export class MailWizzV3Adapter implements MailWizzAdapter {
     raw: unknown,
     endpoint = '/lists/{uid}/subscribers/{sub_uid}'
   ): ContractValidationResult<InternalSubscriber> {
-    const env = normalizeMailWizzEnvelope(raw) as Record<string, unknown>;
+    const env = normalizeMailWizzSingleRecordEnvelope(raw) as Record<string, unknown>;
     const record =
       env?.data && typeof env.data === 'object'
         ? (env.data as Record<string, unknown>).record
@@ -653,7 +660,7 @@ export class MailWizzV3Adapter implements MailWizzAdapter {
     raw: unknown,
     endpoint = '/lists/{uid}/segments/{seg_uid}'
   ): ContractValidationResult<InternalSegmentDetail> {
-    const env = normalizeMailWizzEnvelope(raw) as Record<string, unknown>;
+    const env = normalizeMailWizzSingleRecordEnvelope(raw) as Record<string, unknown>;
     const record =
       env?.data && typeof env.data === 'object'
         ? (env.data as Record<string, unknown>).record
@@ -815,7 +822,7 @@ export class MailWizzV3Adapter implements MailWizzAdapter {
     raw: unknown,
     endpoint = '/campaigns/{uid}'
   ): ContractValidationResult<InternalCampaignDetail> {
-    const env = normalizeMailWizzEnvelope(raw) as Record<string, unknown>;
+    const env = normalizeMailWizzSingleRecordEnvelope(raw) as Record<string, unknown>;
     const record =
       env?.data && typeof env.data === 'object'
         ? (env.data as Record<string, unknown>).record
@@ -909,8 +916,19 @@ export class MailWizzV3Adapter implements MailWizzAdapter {
     }
 
     const d = data as Record<string, unknown>;
+    const recognizedStatKeys = Object.keys(d).filter((k) => KNOWN_STATS_KEYS.has(k));
     const additiveFields = collectAdditiveKeys(d, KNOWN_STATS_KEYS, 'campaignStats');
     const issues: ContractValidationIssue[] = [];
+    if (Object.keys(d).length > 0 && recognizedStatKeys.length === 0) {
+      issues.push({
+        severity: 'ERROR',
+        code: 'RENAMED_FIELD',
+        endpoint,
+        fieldPath: 'data',
+        message: `Campaign stats payload contains only unrecognized keys (${Object.keys(d).join(', ')}); refusing to treat renamed metrics as zero.`,
+      });
+      return { ok: false, issues, additiveFields };
+    }
     if (additiveFields.length > 0) {
       issues.push({
         severity: 'WARNING',
@@ -1000,8 +1018,19 @@ export class MailWizzV3Adapter implements MailWizzAdapter {
     }
 
     const bType = norm.bounce_type;
-    const bounceType: 'hard' | 'soft' | 'internal' =
-      bType === 'soft' || bType === 'internal' ? bType : 'hard';
+    const bounceType: 'hard' | 'soft' | 'internal' | 'unknown' =
+      bType === 'hard' || bType === 'soft' || bType === 'internal' ? bType : 'unknown';
+
+    const bounceIssues: ContractValidationIssue[] = [];
+    if (bounceType === 'unknown') {
+      bounceIssues.push({
+        severity: 'WARNING',
+        code: 'STATUS_SEMANTIC_DRIFT',
+        endpoint,
+        fieldPath: 'bounce_type',
+        message: `Unfamiliar bounce_type "${String((raw as Record<string, unknown>).bounce_type ?? (raw as Record<string, unknown>).type ?? 'missing')}" preserved as unknown rather than coerced to hard bounce.`,
+      });
+    }
 
     return {
       ok: true,
@@ -1017,7 +1046,7 @@ export class MailWizzV3Adapter implements MailWizzAdapter {
           'bounce'
         ),
       },
-      issues: [],
+      issues: bounceIssues,
       additiveFields: [],
     };
   }

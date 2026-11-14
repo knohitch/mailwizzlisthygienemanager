@@ -5,12 +5,22 @@ import {
   normalizeMailWizzBounceRecord,
   normalizeMailWizzEnvelope,
   normalizeMailWizzListRecord,
+  normalizeMailWizzSingleRecordEnvelope,
   normalizeMailWizzSubscriberRecord,
   type MailWizzAuthMode,
 } from './compat';
 
 const tolerantInt = (fallback = 0) =>
   z.preprocess((v) => Math.trunc(coerceNumberFromMailWizz(v, fallback)), z.number().int());
+
+const tolerantOptionalInt = () =>
+  z.preprocess(
+    (v) =>
+      v === undefined || v === null || v === ''
+        ? undefined
+        : Math.trunc(coerceNumberFromMailWizz(v, 1)),
+    z.number().int().min(0).optional()
+  );
 
 const tolerantNumber = (fallback = 0) =>
   z.preprocess((v) => coerceNumberFromMailWizz(v, fallback), z.number());
@@ -28,16 +38,27 @@ export const MailWizzPaginatedEnvelopeSchema = <T extends z.ZodTypeAny>(recordSc
         data: z
           .object({
             count: tolerantInt(0),
-            total_pages: tolerantInt(1).transform((n) => Math.max(0, n)),
+            total_pages: tolerantOptionalInt(),
             current_page: tolerantInt(1).transform((n) => Math.max(1, n)),
             next_page: z.coerce.number().int().nullable().optional(),
             prev_page: z.coerce.number().int().nullable().optional(),
-            records: tolerantArray(recordSchema),
+            records: z.preprocess(
+              (v) => (v === undefined ? undefined : coerceArrayFromPhpJson(v)),
+              z.array(recordSchema)
+            ),
           })
           .passthrough()
           .optional(),
       })
       .passthrough()
+      .superRefine((val, ctx) => {
+        if (val.status === 'success' && (!val.data || !Array.isArray(val.data.records))) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'Paginated MailWizz response missing recognizable `data.records` or `items` collection.',
+          });
+        }
+      })
   );
 
 export const MailWizzListRecordSchema = z.preprocess(
@@ -71,7 +92,7 @@ export const MailWizzListRecordSchema = z.preprocess(
 export type MailWizzListRecord = z.infer<typeof MailWizzListRecordSchema>;
 
 export const MailWizzSingleListResponseSchema = z.preprocess(
-  normalizeMailWizzEnvelope,
+  normalizeMailWizzSingleRecordEnvelope,
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
@@ -116,7 +137,7 @@ export const MailWizzSegmentSummarySchema = z
 export type MailWizzSegmentSummary = z.infer<typeof MailWizzSegmentSummarySchema>;
 
 export const MailWizzSegmentDetailSchema = z.preprocess(
-  normalizeMailWizzEnvelope,
+  normalizeMailWizzSingleRecordEnvelope,
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
@@ -157,7 +178,7 @@ export const MailWizzCampaignSummarySchema = z
 export type MailWizzCampaignSummary = z.infer<typeof MailWizzCampaignSummarySchema>;
 
 export const MailWizzCampaignDetailSchema = z.preprocess(
-  normalizeMailWizzEnvelope,
+  normalizeMailWizzSingleRecordEnvelope,
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
@@ -256,7 +277,7 @@ export const MailWizzCampaignBounceRecordSchema = z.preprocess(
     .object({
       message: z.string().optional().default(''),
       processed: z.union([z.string(), z.boolean(), z.number()]).transform((v) => String(v)).default('no'),
-      bounce_type: z.enum(['hard', 'soft', 'internal']).catch('hard'),
+      bounce_type: z.enum(['hard', 'soft', 'internal', 'unknown']).catch('unknown'),
       subscriber: z
         .object({
           subscriber_uid: z.string(),
@@ -309,7 +330,7 @@ export interface MailWizzClientOptions {
 }
 
 export const MailWizzSingleSubscriberResponseSchema = z.preprocess(
-  normalizeMailWizzEnvelope,
+  normalizeMailWizzSingleRecordEnvelope,
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),

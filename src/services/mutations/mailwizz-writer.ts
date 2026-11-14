@@ -282,6 +282,47 @@ export class MailWizzMutationClient {
     );
   }
 
+  async getRemoteSubscriberByEmail(listUid: string, email: string) {
+    return this.requestJson(
+      'GET',
+      `/lists/${encodeURIComponent(listUid)}/subscribers/search-by-email?EMAIL=${encodeURIComponent(email)}`,
+      MailWizzSingleSubscriberResponseSchema,
+      undefined,
+      { skipMutationGateForRead: true }
+    );
+  }
+
+  /**
+   * Read-only membership confirmation before source-list unsubscribe during MOVE_SUBSCRIBERS.
+   */
+  async verifySubscriberMembershipInList(params: {
+    listUid: string;
+    subscriberUid?: string;
+    email: string;
+  }): Promise<{ confirmedPresent: boolean; subscriberUid?: string }> {
+    const normalizedTargetEmail = params.email.trim().toLowerCase();
+    if (params.subscriberUid) {
+      try {
+        const res = await this.getRemoteSubscriber(params.listUid, params.subscriberUid);
+        const rec = res.data?.record;
+        const remoteEmail = (rec?.EMAIL ?? rec?.email ?? '').trim().toLowerCase();
+        if (rec?.subscriber_uid && remoteEmail === normalizedTargetEmail) {
+          return { confirmedPresent: true, subscriberUid: rec.subscriber_uid };
+        }
+      } catch {
+        // Fall back to search-by-email below
+      }
+    }
+
+    const searchRes = await this.getRemoteSubscriberByEmail(params.listUid, normalizedTargetEmail);
+    const rec = searchRes.data?.record;
+    const remoteEmail = (rec?.EMAIL ?? rec?.email ?? '').trim().toLowerCase();
+    if (rec?.subscriber_uid && remoteEmail === normalizedTargetEmail) {
+      return { confirmedPresent: true, subscriberUid: rec.subscriber_uid };
+    }
+    return { confirmedPresent: false };
+  }
+
   async getRemoteList(listUid: string) {
     return this.requestJson(
       'GET',
@@ -389,7 +430,7 @@ export class MailWizzMutationClient {
       LNAME?: string;
     }>;
     actorEmail: string;
-  }): Promise<{ acceptedCount: number }> {
+  }): Promise<{ acceptedCount: number; subscriberUids: string[] }> {
     // Safety rule: copying subscribers must NOT automatically dispatch confirmation/welcome emails.
     // MailWizz 3.x POST /subscribers/bulk triggers confirmation emails if target list uses double opt-in.
     if (params.targetListOptIn?.toLowerCase() !== 'single') {
@@ -408,10 +449,19 @@ export class MailWizzMutationClient {
       { actorEmail: params.actorEmail }
     );
 
-    const acceptedCount =
-      res.data?.records?.filter((r) => r.status !== 'error').length ??
-      params.subscribers.length;
-    return { acceptedCount };
+    const records = res.data?.records;
+    if (!records || records.length === 0) {
+      return { acceptedCount: 0, subscriberUids: [] };
+    }
+
+    const acceptedRecords = records.filter((r) => r.status !== 'error');
+    const subscriberUids = acceptedRecords
+      .map((r) => r.subscriber_uid)
+      .filter((u): u is string => typeof u === 'string' && u.length > 0);
+    return {
+      acceptedCount: acceptedRecords.length,
+      subscriberUids,
+    };
   }
 
   /**

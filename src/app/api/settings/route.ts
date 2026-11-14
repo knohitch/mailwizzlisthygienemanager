@@ -204,11 +204,41 @@ export async function PUT(req: NextRequest) {
     updateData.webhookSecretEnc = encryptSecret(d.webhookSecret);
   }
 
+  const existingCfg = await prisma.appConfig.findUnique({ where: { id: 'default' } });
+  const connectionChanged =
+    (normalizedUrl ?? null) !== (existingCfg?.mailwizzApiUrl ?? null) ||
+    Boolean(d.clearMailwizzApiKey) ||
+    Boolean(d.mailwizzApiKey && d.mailwizzApiKey.length > 0) ||
+    (d.mailwizzAuthMode !== undefined && d.mailwizzAuthMode !== existingCfg?.mailwizzAuthMode);
+
+  if (connectionChanged) {
+    updateData.mailwizzDetectedVersion = null;
+    updateData.lastValidatedAt = null;
+    updateData.lastValidationStatus = null;
+    updateData.lastValidationMessage = null;
+  }
+
   await prisma.appConfig.upsert({
     where: { id: 'default' },
     update: updateData,
     create: { id: 'default', ...updateData },
   });
+
+  if (connectionChanged) {
+    // Invalidate stale cached verification whenever target MailWizz URL, API key, or auth preference changes
+    await prisma.apiCapabilityCheck.updateMany({
+      where: {
+        capabilityKey: {
+          notIn: ['webhook_live_events', 'webhook_event_processing'],
+        },
+      },
+      data: {
+        status: 'NOT_YET_TESTED',
+        checkedAt: new Date(),
+        notes: 'Reset after MailWizz URL/credential/auth change; re-run validation or Compatibility Check.',
+      },
+    });
+  }
 
   // Immediately re-run classification when rules change
   const recomputed = await recomputeAllHygieneClassifications();

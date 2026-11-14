@@ -10,6 +10,12 @@ import {
   mailWizzFutureAdapterResolver,
 } from '@/services/mailwizz/adapter-resolver';
 import { MailWizzClient, MailWizzApiError } from '@/services/mailwizz/client';
+import {
+  MailWizzCampaignBounceRecordSchema,
+  MailWizzListRecordSchema,
+  MailWizzPaginatedEnvelopeSchema,
+  MailWizzSingleSubscriberResponseSchema,
+} from '@/services/mailwizz/types';
 import { MailWizzMutationClient } from '@/services/mutations/mailwizz-writer';
 import { MailWizzCompatibilityValidator } from '@/services/mailwizz/compatibility-validator';
 
@@ -566,5 +572,159 @@ describe('MailWizz Compatibility Contract & Regression Suite', () => {
       'UNSUPPORTED'
     );
     expect(report.mutationSafetyAllowed).toBe(false);
+  });
+
+  // 16. Tightened connector hardening checks (single-subscriber flat data, next_page without total_pages, unfamiliar bounces, renamed stats, non-collection HTTP 200)
+  it('16. accepts documented 3.x flat single-subscriber data, rejects missing collection containers, advances next_page without total_pages, and never coerces unfamiliar bounces to hard', async () => {
+    // 16a. Documented MailWizz 3.x single subscriber puts fields directly under `data`
+    const flatSubPayload = {
+      status: 'success',
+      data: {
+        subscriber_uid: 'sb_flat_1',
+        EMAIL: 'flat@example.com',
+        status: 'confirmed',
+      },
+    };
+    const schemaSub = MailWizzSingleSubscriberResponseSchema.parse(flatSubPayload);
+    expect(schemaSub.data?.record.subscriber_uid).toBe('sb_flat_1');
+    const adapterSub = adapter.normalizeSingleSubscriberResponse(flatSubPayload);
+    expect(adapterSub.ok).toBe(true);
+    expect(adapterSub.data?.email).toBe('flat@example.com');
+
+    // 16b. Top-level `items` is hoisted cleanly while missing collection fails instead of passing as 0 lists
+    const topItemsParsed = MailWizzPaginatedEnvelopeSchema(MailWizzListRecordSchema).parse({
+      status: 'success',
+      items: [{ general: { list_uid: 'lt_top_1', name: 'Top Items List' } }],
+    });
+    expect(topItemsParsed.data?.records).toHaveLength(1);
+
+    expect(() =>
+      MailWizzPaginatedEnvelopeSchema(MailWizzListRecordSchema).parse({
+        status: 'success',
+        data: { unexpected_field: [] },
+      })
+    ).toThrow();
+    expect(
+      adapter.normalizePaginatedEnvelope(
+        { status: 'success', unexpected_top: true },
+        (r) => adapter.normalizeListRecord(r, '/lists'),
+        '/lists'
+      ).ok
+    ).toBe(false);
+
+    // 16c. Pagination advances when `next_page: 2` is present even if `total_pages` is absent
+    let pageCalls = 0;
+    const clientNoTotalPages = new MailWizzClient({
+      apiUrl: 'https://mw.example.com/api/index.php',
+      apiKey: 'secret-key-xyz',
+      maxRequestsPerSecond: 50,
+      fetchImpl: (async (url: string | URL | Request) => {
+        pageCalls += 1;
+        const page = new URL(String(url)).searchParams.get('page');
+        if (page === '1') {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              data: {
+                count: 2,
+                current_page: 1,
+                next_page: 2,
+                // intentionally omit total_pages
+                records: [{ general: { list_uid: 'lt_p1', name: 'Page 1' } }],
+              },
+            }),
+            { status: 200 }
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            status: 'success',
+            data: {
+              count: 2,
+              current_page: 2,
+              next_page: null,
+              records: [{ general: { list_uid: 'lt_p2', name: 'Page 2' } }],
+            },
+          }),
+          { status: 200 }
+        );
+      }) as typeof fetch,
+    });
+    const pagedLists = await clientNoTotalPages.getLists();
+    expect(pageCalls).toBe(2);
+    expect(pagedLists.records).toHaveLength(2);
+
+    // 16d. Unfamiliar bounce type must NEVER coerce to `'hard'`
+    const unknownBounceSchema = MailWizzCampaignBounceRecordSchema.parse({
+      bounce_type: 'policy_deferral_v4',
+      subscriber: { subscriber_uid: 'sb_b1', email: 'b@example.com' },
+    });
+    expect(unknownBounceSchema.bounce_type).toBe('unknown');
+    const unknownBounceAdapter = adapter.normalizeBounceRecord({
+      bounce_type: 'policy_deferral_v4',
+      subscriber: { subscriber_uid: 'sb_b1', email: 'b@example.com' },
+    });
+    expect(unknownBounceAdapter.ok).toBe(true);
+    expect(unknownBounceAdapter.data?.bounceType).toBe('unknown');
+
+    // 16e. Renamed campaign stats fail validation instead of silently returning 0s
+    const renamedStats = adapter.normalizeCampaignStatsResponse({
+      status: 'success',
+      data: { total_dispatched: 1000, open_total: 250 },
+    });
+    expect(renamedStats.ok).toBe(false);
+    expect(renamedStats.issues.some((i) => i.code === 'RENAMED_FIELD')).toBe(true);
+  });
+
+  // 17. Bulk copy count & target-list membership confirmation prior to MOVE_SUBSCRIBERS source removal
+  it('17. requires verified acceptedCount and target-list membership before considering a subscriber moved', async () => {
+    const prevEnv = process.env.ENABLE_MAILWIZZ_MUTATIONS;
+    process.env.ENABLE_MAILWIZZ_MUTATIONS = 'true';
+    try {
+      const writer = new MailWizzMutationClient({
+        apiUrl: 'https://mw.example.com/api/index.php',
+        apiKey: 'test-key-move',
+        maxRequestsPerSecond: 50,
+        fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
+          const u = String(url);
+          if (u.includes('/subscribers/bulk') && init?.method === 'POST') {
+            return new Response(
+              JSON.stringify({
+                status: 'success',
+                data: { records: [{ status: 'error', error: 'Already invalid' }] },
+              }),
+              { status: 200 }
+            );
+          }
+          if (u.includes('/search-by-email')) {
+            return new Response(
+              JSON.stringify({
+                status: 'success',
+                data: { subscriber_uid: 'sb_target_1', EMAIL: 'moved@example.com', status: 'confirmed' },
+              }),
+              { status: 200 }
+            );
+          }
+          return new Response(JSON.stringify({ status: 'success', data: {} }), { status: 200 });
+        }) as typeof fetch,
+      });
+
+      const zeroAccepted = await writer.createSubscribersBulk({
+        targetListUid: 'lt_target',
+        targetListOptIn: 'single',
+        subscribers: [{ EMAIL: 'moved@example.com' }],
+        actorEmail: 'contract@local.hygiene',
+      });
+      expect(zeroAccepted.acceptedCount).toBe(0);
+
+      const confirmedMember = await writer.verifySubscriberMembershipInList({
+        listUid: 'lt_target',
+        email: 'moved@example.com',
+      });
+      expect(confirmedMember.confirmedPresent).toBe(true);
+      expect(confirmedMember.subscriberUid).toBe('sb_target_1');
+    } finally {
+      process.env.ENABLE_MAILWIZZ_MUTATIONS = prevEnv;
+    }
   });
 });

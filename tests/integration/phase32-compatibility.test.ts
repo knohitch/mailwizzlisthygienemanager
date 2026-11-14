@@ -248,7 +248,13 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
             { status: 200, headers: { 'Content-Type': 'application/json' } }
           );
         }
-        if (u.includes('/track-')) {
+        if (
+          u.includes('/track-') ||
+          u.includes('/delivery-logs') ||
+          u.includes('/opens') ||
+          u.includes('/clicks') ||
+          u.includes('/complaints')
+        ) {
           return new Response(JSON.stringify({ status: 'error' }), { status: 404 });
         }
         return new Response(JSON.stringify({ status: 'success', data: {} }), { status: 200 });
@@ -486,5 +492,190 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
     await prisma.directMailDailyMetric.deleteMany({
       where: { domainName: 'compat-test.example.com', source: 'ALIBABA_CSV_IMPORT' },
     });
+  });
+
+  it('requires positive delivery-logs status, ignores unfamiliar bounces, and aborts MOVE_SUBSCRIBERS without target membership', async () => {
+    const campUid = 'p32_camp_delivery_check';
+    const campaignDbId = 'p32_camp_db_row';
+    await prisma.campaign.deleteMany({ where: { id: campaignDbId } });
+    await prisma.campaign.deleteMany({ where: { campaignUid: campUid } });
+
+    const probeSyncClient = new MailWizzClient({
+      apiUrl: 'https://mw-mock.example.com/api/index.php',
+      apiKey: 'mock-key-deliv',
+      maxRequestsPerSecond: 50,
+      maxRetries: 0,
+      fetchImpl: (async (url: string | URL | Request) => {
+        const u = String(url);
+        if (u.includes('/lists?')) {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              data: {
+                count: 1,
+                total_pages: 1,
+                current_page: 1,
+                next_page: null,
+                records: [
+                  {
+                    general: { list_uid: 'p32_uid_list', name: 'Phase 3.2 Historical Continuity List' },
+                    defaults: { from_email: 'news@example.com' },
+                    subscribers_count: 1,
+                  },
+                ],
+              },
+            }),
+            { status: 200 }
+          );
+        }
+        if (u.includes('/subscribers')) {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              data: {
+                count: 1,
+                total_pages: 1,
+                current_page: 1,
+                next_page: null,
+                records: [
+                  {
+                    subscriber_uid: 'p32_uid_sub',
+                    EMAIL: 'continuity@example.com',
+                    status: 'confirmed',
+                  },
+                ],
+              },
+            }),
+            { status: 200 }
+          );
+        }
+        if (u.endsWith(`/campaigns/${campUid}`)) {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              data: {
+                record: {
+                  campaign_uid: campUid,
+                  name: 'Delivery Status Guard',
+                  status: 'sent',
+                  list: { list_uid: 'p32_uid_list' },
+                },
+              },
+            }),
+            { status: 200 }
+          );
+        }
+        if (u.includes(`/campaigns/${campUid}/stats`)) {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              data: { campaign_status: 'sent', processed_count: 1, delivery_success_count: 1 },
+            }),
+            { status: 200 }
+          );
+        }
+        if (u.includes('/campaigns?')) {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              data: {
+                count: 1,
+                total_pages: 1,
+                current_page: 1,
+                next_page: null,
+                records: [{ campaign_uid: campUid, name: 'Delivery Status Guard', status: 'sent' }],
+              },
+            }),
+            { status: 200 }
+          );
+        }
+        if (u.includes('/bounces')) {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              data: {
+                count: 1,
+                total_pages: 1,
+                current_page: 1,
+                next_page: null,
+                records: [
+                  {
+                    bounce_type: 'custom_deferred_status',
+                    message: 'Transient deferral',
+                    subscriber: { subscriber_uid: 'p32_uid_sub', email: 'continuity@example.com' },
+                  },
+                ],
+              },
+            }),
+            { status: 200 }
+          );
+        }
+        if (u.includes('/delivery-logs')) {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              data: {
+                count: 2,
+                total_pages: 1,
+                current_page: 1,
+                next_page: null,
+                records: [
+                  {
+                    subscriber_uid: 'p32_uid_sub',
+                    status: 'giveup', // Failed attempt must NOT count as DELIVERED!
+                    date_added: '2026-01-05T10:00:00Z',
+                  },
+                  {
+                    subscriber_uid: 'p32_uid_sub',
+                    status: 'delivered',
+                    date_added: '2026-01-06T10:00:00Z',
+                  },
+                ],
+              },
+            }),
+            { status: 200 }
+          );
+        }
+        if (u.includes('/opens') || u.includes('/clicks') || u.includes('/complaints')) {
+          return new Response(JSON.stringify({ status: 'error' }), { status: 404 });
+        }
+        return new Response(
+          JSON.stringify({
+            status: 'success',
+            data: { count: 0, total_pages: 1, current_page: 1, next_page: null, records: [] },
+          }),
+          { status: 200 }
+        );
+      }) as typeof fetch,
+    });
+
+    await runMailWizzSync({ client: probeSyncClient });
+
+    // Confirm failed `giveup` delivery attempt did NOT record DELIVERED (only 1 delivered row from 2026-01-06)
+    const deliveredEvents = await prisma.engagementEvent.findMany({
+      where: {
+        subscriberId: P32_SUB_ID,
+        source: 'API_ACTIVITY_LOG',
+        eventType: 'DELIVERED',
+      },
+    });
+    expect(deliveredEvents).toHaveLength(1);
+    expect(deliveredEvents[0]?.occurredAt.toISOString()).toBe('2026-01-06T10:00:00.000Z');
+
+    // Confirm unfamiliar bounce type was NOT coerced into HARD_BOUNCE
+    const hardBounces = await prisma.engagementEvent.findMany({
+      where: {
+        subscriberId: P32_SUB_ID,
+        source: 'API_BOUNCE_LOG',
+        eventType: 'HARD_BOUNCE',
+      },
+    });
+    expect(hardBounces).toHaveLength(0);
+
+    // Clean up test campaign & events
+    await prisma.engagementEvent.deleteMany({
+      where: { subscriberId: P32_SUB_ID, source: 'API_ACTIVITY_LOG' },
+    });
+    await prisma.campaign.deleteMany({ where: { campaignUid: campUid } });
   });
 });

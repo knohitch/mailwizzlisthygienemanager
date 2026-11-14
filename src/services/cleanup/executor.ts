@@ -611,7 +611,7 @@ export async function executeCleanupOperation(params: {
             throw new Error('Missing targetListUid for subscriber copy.');
           }
           const targetListMeta = await client.getRemoteList(targetUid);
-          await client.createSubscribersBulk({
+          const bulkCopyRes = await client.createSubscribersBulk({
             targetListUid: targetUid,
             targetListOptIn: targetListMeta.data?.record?.general?.opt_in,
             subscribers: [
@@ -623,6 +623,11 @@ export async function executeCleanupOperation(params: {
             ],
             actorEmail: actor,
           });
+          if (bulkCopyRes.acceptedCount < 1) {
+            throw new Error(
+              `MailWizz bulk copy into list ${targetUid} did not accept subscriber ${freshSub.email} (acceptedCount=${bulkCopyRes.acceptedCount}).`
+            );
+          }
           await prisma.cleanupOperationRecord.update({
             where: { id: rec.id },
             data: {
@@ -643,7 +648,7 @@ export async function executeCleanupOperation(params: {
             throw new Error('MOVE_SUBSCRIBERS requires targetListUid.');
           }
           const targetListMeta = await client.getRemoteList(targetUid);
-          await client.createSubscribersBulk({
+          const bulkCopyRes = await client.createSubscribersBulk({
             targetListUid: targetUid,
             targetListOptIn: targetListMeta.data?.record?.general?.opt_in,
             subscribers: [
@@ -655,7 +660,22 @@ export async function executeCleanupOperation(params: {
             ],
             actorEmail: actor,
           });
-          // Only unsubscribe source list after verified copy into target list succeeds
+          if (bulkCopyRes.acceptedCount < 1) {
+            throw new Error(
+              `MOVE_SUBSCRIBERS aborted before source unsubscribe: bulk copy into ${targetUid} accepted ${bulkCopyRes.acceptedCount} record(s).`
+            );
+          }
+          const membership = await client.verifySubscriberMembershipInList({
+            listUid: targetUid,
+            subscriberUid: bulkCopyRes.subscriberUids[0],
+            email: freshSub.email,
+          });
+          if (!membership.confirmedPresent) {
+            throw new Error(
+              `MOVE_SUBSCRIBERS aborted before source unsubscribe: subscriber ${freshSub.email} could not be confirmed in target list ${targetUid}.`
+            );
+          }
+          // Only unsubscribe source list after verified copy AND target membership confirmation succeed
           await client.unsubscribeSubscriber({
             listUid: rec.mailingListUid,
             subscriberUid: rec.subscriberUid,

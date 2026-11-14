@@ -5,6 +5,7 @@ import { requireApiAuth } from '@/lib/api-auth';
 import { MailWizzApiError, MailWizzClient } from '@/services/mailwizz/client';
 import type { MailWizzAuthMode } from '@/services/mailwizz/compat';
 import { createConfiguredMailWizzClient } from '@/services/mailwizz/sync';
+import { runReadOnlyCompatibilityCheck } from '@/services/mailwizz/compatibility-validator';
 import {
   ensureCapabilityMatrixInitialized,
   updateCapabilityStatus,
@@ -110,15 +111,23 @@ export async function POST(req: NextRequest) {
     await prisma.appConfig.update({
       where: { id: 'default' },
       data: {
-        mailwizzAuthMode: resolvedAuthMode,
+        // Preserve 'auto' preference cleanly rather than locking onto a transient fallback mode
+        ...(cfg?.mailwizzAuthMode && cfg.mailwizzAuthMode !== 'auto'
+          ? { mailwizzAuthMode: cfg.mailwizzAuthMode }
+          : {}),
         ...(apiResult.detectedVersion
           ? { mailwizzDetectedVersion: apiResult.detectedVersion }
           : {}),
         lastValidatedAt: new Date(),
         lastValidationStatus: 'SUCCESS',
-        lastValidationMessage: apiResult.message,
+        lastValidationMessage: `${apiResult.message} (working auth: ${resolvedAuthMode})`,
       },
     });
+
+    const compatReport = await runReadOnlyCompatibilityCheck({
+      actorEmail: auth.session.adminEmail,
+      ipAddress: auth.ip,
+    }).catch(() => null);
 
     await recordAuditLog({
       actorEmail: auth.session.adminEmail,
@@ -126,13 +135,24 @@ export async function POST(req: NextRequest) {
       resourceType: 'AppConfig',
       outcome: 'SUCCESS',
       ipAddress: auth.ip,
-      details: { listCount: apiResult.listCount },
+      details: {
+        listCount: apiResult.listCount,
+        workingAuthMode: resolvedAuthMode,
+        compatibilityStatus: compatReport?.overallStatus ?? 'UNVERIFIED',
+      },
     });
 
     return NextResponse.json({
       ok: true,
       api: apiResult,
       reportingDb: reportingDbResult,
+      compatibility: compatReport
+        ? {
+            overallStatus: compatReport.overallStatus,
+            adapterMode: compatReport.adapterMode,
+            detectedVersion: compatReport.versionInfo.detectedVersion,
+          }
+        : null,
     });
   } catch (err) {
     const message =

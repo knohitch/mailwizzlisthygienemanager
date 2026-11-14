@@ -363,16 +363,26 @@ export class MailWizzClient {
 
       records.push(...data.records);
       if (onPage) {
-        await onPage(currentPage, data.total_pages);
+        await onPage(
+          currentPage,
+          data.total_pages ?? Math.max(currentPage, data.next_page ?? currentPage)
+        );
       }
 
-      const computedNext =
-        data.next_page ?? (currentPage < data.total_pages ? currentPage + 1 : null);
+      const explicitNext =
+        typeof data.next_page === 'number' && data.next_page > currentPage
+          ? data.next_page
+          : null;
+      const inferredNext =
+        explicitNext ??
+        (data.total_pages !== undefined && currentPage < data.total_pages
+          ? currentPage + 1
+          : null);
 
-      if (!computedNext || currentPage >= data.total_pages || data.records.length === 0) {
+      if (!inferredNext || data.records.length === 0) {
         break;
       }
-      currentPage = computedNext;
+      currentPage = inferredNext;
     }
 
     return { records, totalReportedCount };
@@ -509,6 +519,8 @@ export class MailWizzClient {
     perPage = 50
   ): Promise<{
     supported: boolean;
+    status: 'VERIFIED' | 'UNSUPPORTED' | 'BLOCKED' | 'UNKNOWN';
+    reason?: string;
     records: Array<z.infer<typeof MailWizzCampaignActivityRecordSchema>>;
   }> {
     const path = `/campaigns/${encodeURIComponent(campaignUid)}/${subpath}`;
@@ -518,19 +530,40 @@ export class MailWizzClient {
         MailWizzCampaignActivityRecordSchema,
         perPage
       );
-      return { supported: true, records: res.records };
+      return { supported: true, status: 'VERIFIED', records: res.records };
     } catch (err) {
       if (
         err instanceof MailWizzApiError &&
         (err.statusCode === 404 || err.statusCode === 405 || err.statusCode === 501)
       ) {
-        return { supported: false, records: [] };
+        return {
+          supported: false,
+          status: 'UNSUPPORTED',
+          reason: err.message,
+          records: [],
+        };
       }
+      if (
+        err instanceof MailWizzApiError &&
+        (err.statusCode === 401 || err.statusCode === 403)
+      ) {
+        logger.warn('Optional MailWizz activity endpoint blocked by auth/permissions', {
+          endpoint: path,
+          statusCode: err.statusCode,
+        });
+        return {
+          supported: false,
+          status: 'BLOCKED',
+          reason: err.message,
+          records: [],
+        };
+      }
+      const reason = err instanceof Error ? err.message : 'unknown error';
       logger.warn('Optional MailWizz activity endpoint check failed', {
         endpoint: path,
-        error: err instanceof Error ? err.message : 'unknown',
+        error: reason,
       });
-      return { supported: false, records: [] };
+      return { supported: false, status: 'UNKNOWN', reason, records: [] };
     }
   }
 }

@@ -173,14 +173,55 @@ export function detectMailWizzVersionFromResponse(
  * Normalizes MailWizz 1.x / 2.x / 3.x / future REST response envelopes into `{ status, error, data }`.
  */
 export function normalizeMailWizzEnvelope(raw: unknown): unknown {
-  if (!raw || typeof raw !== 'object') return raw;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
   const obj = { ...(raw as Record<string, unknown>) };
 
   if (obj.status === undefined) {
     if (obj.success === false || obj.ok === false || obj.error) {
       obj.status = 'error';
-    } else if (obj.success === true || obj.ok === true || obj.data !== undefined) {
+    } else if (
+      obj.success === true ||
+      obj.ok === true ||
+      obj.data !== undefined ||
+      obj.items !== undefined ||
+      obj.records !== undefined
+    ) {
       obj.status = 'success';
+    }
+  }
+
+  // Hoist top-level `items` or `records` collections into `data` cleanly instead of dropping as 0 records
+  if (obj.data === undefined && (obj.items !== undefined || obj.records !== undefined)) {
+    const hoistedRecords =
+      obj.records !== undefined
+        ? coerceArrayFromPhpJson(obj.records)
+        : Array.isArray(obj.items)
+          ? obj.items
+          : obj.items && typeof obj.items === 'object'
+            ? coerceArrayFromPhpJson(obj.items)
+            : undefined;
+    if (hoistedRecords !== undefined) {
+      const meta =
+        obj.meta && typeof obj.meta === 'object'
+          ? (obj.meta as Record<string, unknown>)
+          : null;
+      const pagination =
+        meta?.pagination && typeof meta.pagination === 'object'
+          ? (meta.pagination as Record<string, unknown>)
+          : meta;
+      obj.data = {
+        records: hoistedRecords,
+        count: obj.count ?? pagination?.total ?? hoistedRecords.length,
+        ...(obj.total_pages !== undefined || pagination?.total_pages !== undefined
+          ? { total_pages: obj.total_pages ?? pagination?.total_pages }
+          : {}),
+        ...(obj.current_page !== undefined || pagination?.current_page !== undefined
+          ? { current_page: obj.current_page ?? pagination?.current_page }
+          : {}),
+        ...(obj.next_page !== undefined || pagination?.next_page !== undefined
+          ? { next_page: obj.next_page ?? pagination?.next_page }
+          : {}),
+      };
     }
   }
 
@@ -220,6 +261,34 @@ export function normalizeMailWizzEnvelope(raw: unknown): unknown {
     obj.data = data;
   }
 
+  return obj;
+}
+
+/**
+ * Normalizes single-record MailWizz endpoints where documented 3.x APIs may place
+ * fields either under `data.record` OR directly under `data` (for example GET subscriber).
+ */
+export function normalizeMailWizzSingleRecordEnvelope(raw: unknown): unknown {
+  const env = normalizeMailWizzEnvelope(raw);
+  if (!env || typeof env !== 'object' || Array.isArray(env)) return env;
+  const obj = { ...(env as Record<string, unknown>) };
+  if (obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)) {
+    const data = { ...(obj.data as Record<string, unknown>) };
+    if (
+      data.record === undefined &&
+      (data.subscriber_uid !== undefined ||
+        data.EMAIL !== undefined ||
+        data.email !== undefined ||
+        data.general !== undefined ||
+        data.list_uid !== undefined ||
+        data.segment_uid !== undefined ||
+        data.campaign_uid !== undefined ||
+        data.uid !== undefined)
+    ) {
+      data.record = { ...data };
+    }
+    obj.data = data;
+  }
   return obj;
 }
 
@@ -287,15 +356,23 @@ export function normalizeMailWizzSubscriberRecord(raw: unknown): unknown {
 export function normalizeMailWizzBounceRecord(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw;
   const obj = { ...(raw as Record<string, unknown>) };
-  const rawType = String(obj.bounce_type ?? obj.type ?? 'hard')
+  const rawType = String(obj.bounce_type ?? obj.type ?? '')
     .trim()
     .toLowerCase();
   if (rawType.includes('soft') || rawType.includes('transient') || rawType.includes('temp')) {
     obj.bounce_type = 'soft';
   } else if (rawType.includes('internal')) {
     obj.bounce_type = 'internal';
-  } else {
+  } else if (
+    rawType === 'hard' ||
+    rawType === 'hard_bounce' ||
+    rawType === 'permanent' ||
+    rawType.includes('hard')
+  ) {
     obj.bounce_type = 'hard';
+  } else {
+    // Require positive evidence before treating unfamiliar bounce types as permanent hard bounces
+    obj.bounce_type = 'unknown';
   }
 
   if (!obj.subscriber && (obj.subscriber_uid || obj.uid || obj.email)) {

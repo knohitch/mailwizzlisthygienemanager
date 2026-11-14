@@ -475,6 +475,13 @@ export async function runMailWizzSync(options?: {
       for (const b of bouncesRes.records) {
         const subRef = subscriberIdByUid.get(b.subscriber.subscriber_uid);
         if (!subRef) continue;
+        if (b.bounce_type === 'unknown') {
+          logger.warn('Skipped unrecognized bounce_type without coercing to HARD_BOUNCE', {
+            campaignUid: savedCamp.campaignUid,
+            subscriberUid: b.subscriber.subscriber_uid,
+          });
+          continue;
+        }
         const eventType =
           b.bounce_type === 'hard'
             ? 'HARD_BOUNCE'
@@ -534,19 +541,44 @@ export async function runMailWizzSync(options?: {
         def.subpath,
         batchSize
       );
-      if (activityEndpointSupport[def.subpath] === null) {
-        activityEndpointSupport[def.subpath] = probe.supported;
-        if (probe.supported) {
+      if (probe.status === 'VERIFIED') {
+        if (activityEndpointSupport[def.subpath] !== true) {
+          activityEndpointSupport[def.subpath] = true;
           await updateCapabilityStatus(
             def.capKey,
             'VERIFIED',
             `Natively supported by connected MailWizz API via /campaigns/{uid}/${def.subpath}.`
           );
         }
+      } else if (probe.status === 'UNSUPPORTED') {
+        // Cache negative result only on definitive 404/405/501 and downgrade any stale VERIFIED status
+        activityEndpointSupport[def.subpath] = false;
+        await updateCapabilityStatus(
+          def.capKey,
+          'UNAVAILABLE',
+          probe.reason || `Endpoint /campaigns/{uid}/${def.subpath} returned unsupported status.`
+        );
+        continue;
+      } else {
+        // Transient timeout/429/schema or 401/403 permission error: do not mark endpoint permanently unsupported
+        if (probe.status === 'BLOCKED') {
+          await updateCapabilityStatus(
+            def.capKey,
+            'UNAVAILABLE',
+            `Permission denied (${probe.reason ?? 'HTTP 401/403'}) probing /campaigns/{uid}/${def.subpath}.`
+          );
+        }
+        continue;
       }
-      if (!probe.supported) continue;
 
       for (const act of probe.records) {
+        if (def.subpath === 'delivery-logs') {
+          const actStatus = (act.status ?? '').trim().toLowerCase();
+          if (!['delivered', 'success', 'sent', 'ok'].includes(actStatus)) {
+            // Require positive delivery evidence; never count failed/giveup/unknown rows as DELIVERED
+            continue;
+          }
+        }
         const subUid = act.subscriber_uid ?? act.subscriber?.subscriber_uid ?? act.subscriber?.uid;
         if (!subUid) continue;
         const subRef = subscriberIdByUid.get(subUid);
