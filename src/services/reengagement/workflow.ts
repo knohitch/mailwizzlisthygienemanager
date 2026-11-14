@@ -128,6 +128,11 @@ export async function createSegmentForReengagementPlan(params: {
     include: { mailingList: true },
   });
   if (!plan) throw new Error('Re-engagement plan not found.');
+  if (plan.mailingList.isDemoData) {
+    throw new Error(
+      'Safety lock: remote MailWizz segment creation is forbidden for synthetic demo mailing lists.'
+    );
+  }
 
   if (!isMailWizzMutationsEnabled()) {
     throw new Error(
@@ -135,7 +140,7 @@ export async function createSegmentForReengagementPlan(params: {
     );
   }
 
-  const { client } = await createConfiguredMutationClient();
+  const { client } = await createConfiguredMutationClient('CREATE_SEGMENT');
   const res = await client.createOrUpdateSegment({
     listUid: plan.mailingList.listUid,
     segmentUid: plan.segmentUid ?? undefined,

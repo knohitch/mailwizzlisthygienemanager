@@ -498,7 +498,11 @@ export function CompatibilityView({
                   When MailWizz upgrades to a new <code className="rounded bg-white px-1">3.1+</code> minor version,
                   the resolver enters <strong>PROVISIONAL READ-ONLY</strong> mode until you run a connected read-only
                   Compatibility Check that passes all 4 critical sync contracts (List Discovery, Subscriber Retrieval,
-                  Pagination, and Status Retrieval) and explicitly approve that version here.
+                  Pagination, and Status Retrieval) and explicitly approve that version here. Approving a version never
+                  automatically unlocks individual mutation operations whose per-operation read prerequisites or
+                  capability checks are <code className="rounded bg-white px-1">UNSUPPORTED</code>,{' '}
+                  <code className="rounded bg-white px-1">BLOCKED</code>, or{' '}
+                  <code className="rounded bg-white px-1">UNKNOWN</code>.
                 </p>
                 {data.approvedAt && (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">

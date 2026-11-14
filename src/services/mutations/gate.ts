@@ -13,6 +13,8 @@ import { mailWizzCapabilityRegistry } from '@/services/mailwizz/capability-regis
 import type { MailWizzAuthMode } from '@/services/mailwizz/compat';
 import { mailWizzVersionDetector } from '@/services/mailwizz/version-detector';
 
+import type { CapabilityKey, CompatibilityReport } from '@/services/mailwizz/contracts';
+
 export {
   isMailWizzMutationsEnabled,
   MailWizzMutationClient,
@@ -20,11 +22,93 @@ export {
   UnsafeOperationBlockedError,
 };
 
+export type RemoteMutationOperation =
+  | 'UNSUBSCRIBE'
+  | 'COPY_SUBSCRIBERS'
+  | 'CREATE_LIST'
+  | 'MOVE_SUBSCRIBERS'
+  | 'CREATE_SEGMENT';
+
+const OPERATION_CAPABILITY_REQUIREMENTS: Record<
+  RemoteMutationOperation,
+  {
+    requiredVerified: CapabilityKey[];
+    requiredAvailable: CapabilityKey[];
+  }
+> = {
+  UNSUBSCRIBE: {
+    requiredVerified: [
+      'list_discovery',
+      'subscriber_retrieval',
+      'subscriber_status_retrieval',
+    ],
+    requiredAvailable: ['subscriber_unsubscribe'],
+  },
+  COPY_SUBSCRIBERS: {
+    requiredVerified: [
+      'list_discovery',
+      'subscriber_retrieval',
+      'subscriber_status_retrieval',
+    ],
+    requiredAvailable: ['subscriber_copying'],
+  },
+  CREATE_LIST: {
+    requiredVerified: ['list_discovery'],
+    requiredAvailable: ['list_creation'],
+  },
+  MOVE_SUBSCRIBERS: {
+    requiredVerified: [
+      'list_discovery',
+      'subscriber_retrieval',
+      'subscriber_status_retrieval',
+    ],
+    requiredAvailable: ['subscriber_copying', 'subscriber_unsubscribe'],
+  },
+  CREATE_SEGMENT: {
+    requiredVerified: ['list_discovery', 'segment_discovery'],
+    requiredAvailable: ['segment_creation'],
+  },
+};
+
+export function assertOperationCapabilitiesInReport(
+  report: CompatibilityReport,
+  operation: RemoteMutationOperation
+): void {
+  const reqs = OPERATION_CAPABILITY_REQUIREMENTS[operation];
+  const capMap = new Map(report.capabilities.map((c) => [c.key, c]));
+
+  for (const key of reqs.requiredVerified) {
+    const cap = capMap.get(key);
+    if (!cap || cap.status !== 'VERIFIED') {
+      throw new UnsafeOperationBlockedError(
+        `Remote ${operation} blocked: required prerequisite capability "${cap?.label ?? key}" is ${cap?.status ?? 'UNKNOWN'} (must be VERIFIED even when the MailWizz version is approved).`
+      );
+    }
+  }
+
+  for (const key of reqs.requiredAvailable) {
+    const cap = capMap.get(key);
+    if (
+      !cap ||
+      cap.status === 'UNSUPPORTED' ||
+      cap.status === 'UNKNOWN' ||
+      cap.status === 'BLOCKED'
+    ) {
+      throw new UnsafeOperationBlockedError(
+        `Remote ${operation} blocked: operation capability "${cap?.label ?? key}" is ${cap?.status ?? 'UNKNOWN'} (${cap?.reason ?? 'per-operation verification failed'}).`
+      );
+    }
+  }
+}
+
 /**
- * Verifies version compatibility and contract checks allow remote mutations (fail-closed on
- * unverified major releases, custom versions, or failed compatibility contracts).
+ * Verifies version compatibility AND per-operation capability contracts allow remote mutations
+ * (fail-closed on unverified major releases, custom versions, missing per-op capabilities, or failed contracts).
  */
-export async function assertCompatibilityPermitsRemoteMutations(): Promise<void> {
+export async function assertCompatibilityPermitsRemoteMutations(
+  operation?: RemoteMutationOperation,
+  options?: { requireConnectedReport?: boolean }
+): Promise<void> {
   const [cfg, compatCfg, latestReport] = await Promise.all([
     prisma.appConfig.findUnique({ where: { id: 'default' } }),
     mailWizzCapabilityRegistry.loadCompatibilityConfig(),
@@ -43,7 +127,16 @@ export async function assertCompatibilityPermitsRemoteMutations(): Promise<void>
           'Remote MailWizz mutations are locked until the connected version passes compatibility verification and administrator approval.'
       );
     }
+    if (operation) {
+      assertOperationCapabilitiesInReport(latestReport, operation);
+    }
     return;
+  }
+
+  if (options?.requireConnectedReport) {
+    throw new UnsafeOperationBlockedError(
+      `Remote ${operation ?? 'mutation'} blocked fail-closed: run a live connected read-only Compatibility Check before permitting remote MailWizz writes.`
+    );
   }
 
   const detectedOrConfigured =
@@ -72,11 +165,15 @@ export async function assertCompatibilityPermitsRemoteMutations(): Promise<void>
   }
 }
 
-export async function createConfiguredMutationClient(): Promise<{
+export async function createConfiguredMutationClient(
+  operation?: RemoteMutationOperation
+): Promise<{
   client: MailWizzMutationClient;
   batchSize: number;
 }> {
-  await assertCompatibilityPermitsRemoteMutations();
+  await assertCompatibilityPermitsRemoteMutations(operation, {
+    requireConnectedReport: true,
+  });
 
   const env = getEnv();
   const cfg = await prisma.appConfig.upsert({

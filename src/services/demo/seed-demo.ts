@@ -10,12 +10,28 @@ function seededNumber(seed: number): number {
   return x - Math.floor(x);
 }
 
-export async function seedSyntheticDemoData(): Promise<{
+export async function seedSyntheticDemoData(options?: {
+  allowWhenRealDataExists?: boolean;
+}): Promise<{
   listsCreated: number;
   subscribersCreated: number;
   campaignsCreated: number;
   eventsCreated: number;
 }> {
+  if (!options?.allowWhenRealDataExists) {
+    const [realLists, realSubscribers, cfg] = await Promise.all([
+      prisma.mailingList.count({ where: { isDemoData: false } }),
+      prisma.subscriber.count({ where: { isDemoData: false } }),
+      prisma.appConfig.findUnique({ where: { id: 'default' } }),
+    ]);
+
+    if (realLists > 0 || realSubscribers > 0 || Boolean(cfg?.mailwizzApiUrl)) {
+      throw new Error(
+        `Refusing to seed synthetic demo data because real (non-demo) MailWizz data or connection configuration already exists (realLists=${realLists}, realSubscribers=${realSubscribers}).`
+      );
+    }
+  }
+
   await ensureCapabilityMatrixInitialized();
 
   // Clear existing demo data cleanly before re-seeding

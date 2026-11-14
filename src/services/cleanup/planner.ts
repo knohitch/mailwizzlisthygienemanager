@@ -2,6 +2,10 @@ import crypto from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { buildPrismaWhereFromFilter, type FilterGroup } from '@/services/analysis/filter-engine';
 import { isMailWizzMutationsEnabled } from '@/services/mutations/mailwizz-writer';
+import {
+  assertCompatibilityPermitsRemoteMutations,
+  type RemoteMutationOperation,
+} from '@/services/mutations/gate';
 import { recordAuditLog } from '@/services/security/audit';
 import { sanitizeCsvCell } from '@/services/security/csv';
 import { encryptSecret, sha256Hex } from '@/services/security/crypto';
@@ -447,6 +451,12 @@ export async function confirmAndEnqueueCleanup(input: ConfirmCleanupInput) {
     });
     throw new Error(
       `Remote MailWizz action "${op.actionType}" is disabled because ENABLE_MAILWIZZ_MUTATIONS=false. Use application suppression (SUPPRESS), CSV export, or enable remote mutations explicitly in server environment.`
+    );
+  }
+
+  if (REMOTE_ACTIONS.has(op.actionType)) {
+    await assertCompatibilityPermitsRemoteMutations(
+      op.actionType as RemoteMutationOperation
     );
   }
 

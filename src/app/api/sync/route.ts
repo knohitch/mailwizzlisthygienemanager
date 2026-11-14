@@ -53,16 +53,40 @@ export async function POST(req: NextRequest) {
   const { action, listUid } = parsed.data;
 
   if (action === 'SEED_DEMO_DATA') {
-    const seeded = await seedSyntheticDemoData();
-    await recordAuditLog({
-      actorEmail: auth.session.adminEmail,
-      action: 'SEED_DEMO_DATA',
-      resourceType: 'MailingList',
-      outcome: 'SUCCESS',
-      ipAddress: auth.ip,
-      details: seeded,
-    });
-    return NextResponse.json({ ok: true, seeded });
+    if (
+      process.env.NODE_ENV === 'production' &&
+      process.env.ALLOW_DEMO_SEED_IN_PROD !== 'true'
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Seeding synthetic demo data is disabled in production deployments (NODE_ENV=production).',
+        },
+        { status: 403 }
+      );
+    }
+    try {
+      const seeded = await seedSyntheticDemoData();
+      await recordAuditLog({
+        actorEmail: auth.session.adminEmail,
+        action: 'SEED_DEMO_DATA',
+        resourceType: 'MailingList',
+        outcome: 'SUCCESS',
+        ipAddress: auth.ip,
+        details: seeded,
+      });
+      return NextResponse.json({ ok: true, seeded });
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error:
+            err instanceof Error
+              ? err.message
+              : 'Refused to seed synthetic demo data alongside real data.',
+        },
+        { status: 409 }
+      );
+    }
   }
 
   if (action === 'CLEAR_DEMO_DATA') {
@@ -71,6 +95,9 @@ export async function POST(req: NextRequest) {
     await prisma.listSegment.deleteMany({ where: { isDemoData: true } });
     await prisma.campaign.deleteMany({ where: { isDemoData: true } });
     await prisma.mailingList.deleteMany({ where: { isDemoData: true } });
+    await prisma.directMailDailyMetric.deleteMany({ where: { isDemoData: true } });
+    await prisma.inboxPlacementTest.deleteMany({ where: { isDemoData: true } });
+    await prisma.postmasterStat.deleteMany({ where: { isDemoData: true } });
     await prisma.appConfig.update({
       where: { id: 'default' },
       data: { isDemoMode: false },

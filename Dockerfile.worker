@@ -20,4 +20,4 @@ RUN npx prisma generate && chown -R appuser:appgroup /app
 
 USER appuser
 
-CMD ["npx", "tsx", "worker/index.ts"]
+CMD ["./node_modules/.bin/tsx", "worker/index.ts"]

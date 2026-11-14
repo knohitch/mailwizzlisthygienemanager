@@ -8,6 +8,7 @@ import {
   assertCompatibilityPermitsRemoteMutations,
   createConfiguredMutationClient,
   type MailWizzMutationClient,
+  type RemoteMutationOperation,
 } from '@/services/mutations/gate';
 import { mapStrictMailWizzSubscriberStatus } from '@/services/mailwizz/adapter-v3';
 import { recordAuditLog } from '@/services/security/audit';
@@ -80,9 +81,17 @@ export async function executeCleanupOperation(params: {
 
   let client = params.mutationClient;
   if (needsRemoteClient) {
-    await assertCompatibilityPermitsRemoteMutations();
+    if (op.mailingList?.isDemoData) {
+      throw new Error(
+        `Safety lock: remote MailWizz action "${op.actionType}" cannot execute against synthetic demo mailing list data.`
+      );
+    }
+    const remoteOp = op.actionType as RemoteMutationOperation;
+    await assertCompatibilityPermitsRemoteMutations(remoteOp, {
+      requireConnectedReport: !client,
+    });
     if (!client) {
-      const configured = await createConfiguredMutationClient();
+      const configured = await createConfiguredMutationClient(remoteOp);
       client = configured.client;
     }
   }
@@ -518,6 +527,11 @@ export async function executeCleanupOperation(params: {
           });
           succeededCount++;
         } else if (op.actionType === 'UNSUBSCRIBE' && client) {
+          if (freshSub.isDemoData) {
+            throw new Error(
+              'Safety lock: remote MailWizz unsubscribe is forbidden for synthetic demo records.'
+            );
+          }
           // Verify remote status & subscriber identity first to detect discrepancies or UID mismatch
           const remoteBefore = await client.getRemoteSubscriber(
             rec.mailingListUid,
@@ -602,6 +616,11 @@ export async function executeCleanupOperation(params: {
           (op.actionType === 'COPY_SUBSCRIBERS' || op.actionType === 'CREATE_LIST') &&
           client
         ) {
+          if (freshSub.isDemoData) {
+            throw new Error(
+              'Safety lock: remote MailWizz list/subscriber copy is forbidden for synthetic demo records.'
+            );
+          }
           const updatedOp = await prisma.cleanupOperation.findUnique({
             where: { id: op.id },
             select: { targetListUid: true },
@@ -639,6 +658,11 @@ export async function executeCleanupOperation(params: {
           });
           succeededCount++;
         } else if (op.actionType === 'MOVE_SUBSCRIBERS' && client) {
+          if (freshSub.isDemoData) {
+            throw new Error(
+              'Safety lock: remote MailWizz MOVE_SUBSCRIBERS is forbidden for synthetic demo records.'
+            );
+          }
           const updatedOp = await prisma.cleanupOperation.findUnique({
             where: { id: op.id },
             select: { targetListUid: true },

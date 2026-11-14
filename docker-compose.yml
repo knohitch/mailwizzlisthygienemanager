@@ -43,7 +43,10 @@ services:
     env_file:
       - .env
     environment:
+      NODE_ENV: "production"
       ENABLE_MAILWIZZ_MUTATIONS: "${ENABLE_MAILWIZZ_MUTATIONS:-false}"
+    volumes:
+      - backups_data:/app/backups
     ports:
       - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-3000}:3000"
     healthcheck:
@@ -68,6 +71,7 @@ services:
     env_file:
       - .env
     environment:
+      NODE_ENV: "production"
       ENABLE_MAILWIZZ_MUTATIONS: "${ENABLE_MAILWIZZ_MUTATIONS:-false}"
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'worker/index.ts' >/dev/null || exit 1"]
@@ -78,3 +82,4 @@ services:
 
 volumes:
   postgres_data:
+  backups_data:
