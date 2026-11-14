@@ -448,6 +448,13 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
       let getCalls = 0;
       const mockFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
         const method = (init?.method ?? 'GET').toUpperCase();
+        const urlStr =
+          typeof _input === 'string'
+            ? _input
+            : _input instanceof URL
+              ? _input.toString()
+              : _input.url;
+        const subscriberUid = urlStr.split('/').pop() || 'sub';
         if (method === 'GET') {
           getCalls++;
           // First GET (pre-check for sub 1) = confirmed; Second GET (post-error reconciliation for sub 1) = unsubscribed!
@@ -455,7 +462,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
           return new Response(
             JSON.stringify({
               status: 'success',
-              data: { record: { subscriber_uid: 'sub', status } },
+              data: { record: { subscriber_uid: subscriberUid, status } },
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } }
           );

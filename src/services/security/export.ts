@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { sanitizeCsvCell } from './csv';
 import { encryptExportBuffer } from './crypto';
 import { recordAuditLog } from './audit';
 import type { HygieneStatus, SubscriberStatus } from '@prisma/client';
@@ -13,13 +14,7 @@ export interface ExportSubscribersOptions {
   ipAddress?: string | null;
 }
 
-function escapeCsvCell(value: string | number | boolean | null | undefined): string {
-  const str = value === null || value === undefined ? '' : String(value);
-  if (/[",\r\n]/.test(str)) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
+const escapeCsvCell = sanitizeCsvCell;
 
 export async function generateSubscriberExport(options: ExportSubscribersOptions): Promise<{
   filename: string;

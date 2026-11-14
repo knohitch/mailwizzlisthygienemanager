@@ -337,6 +337,7 @@ describe('Integration: Mock MailWizz 3.0.5 Sync, Report Import & Durable Job Que
   });
 
   afterAll(async () => {
+    server.closeAllConnections?.();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     // Clean up test records & restore demo seed + clear temporary MailWizz URL
     await prisma.engagementEvent.deleteMany({

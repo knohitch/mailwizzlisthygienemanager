@@ -36,6 +36,16 @@ export async function resumeCleanupOperation(operationId: string, actorEmail: st
     throw new Error(`Cannot resume operation in status ${op.status}.`);
   }
 
+  const claimed = await prisma.cleanupOperation.updateMany({
+    where: { id: op.id, status: { in: ['PAUSED', 'AUTO_STOPPED'] } },
+    data: { status: 'CONFIRMED', autoStopReason: null },
+  });
+  if (claimed.count === 0) {
+    throw new Error(
+      'Operation could not be resumed because its status changed concurrently.'
+    );
+  }
+
   const job = await enqueueJob({
     type: 'HYGIENE_EXECUTION',
     payload: { operationId: op.id, actorEmail },
@@ -44,7 +54,7 @@ export async function resumeCleanupOperation(operationId: string, actorEmail: st
 
   const updated = await prisma.cleanupOperation.update({
     where: { id: op.id },
-    data: { status: 'CONFIRMED', syncJobId: job.id, autoStopReason: null },
+    data: { syncJobId: job.id },
   });
 
   await recordAuditLog({

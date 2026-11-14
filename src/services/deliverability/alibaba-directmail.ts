@@ -349,14 +349,28 @@ export async function syncAlibabaDirectMailReadOnly(params: {
   };
 }
 
+const MAX_DIRECTMAIL_CSV_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_DIRECTMAIL_CSV_ROWS = 20_000;
+const FORBIDDEN_CSV_HEADERS = new Set(['__proto__', 'constructor', 'prototype']);
+
 export async function importAlibabaDirectMailCsv(params: {
   csvContent: string;
   actorEmail: string;
 }): Promise<{ rowsImported: number }> {
+  if (Buffer.byteLength(params.csvContent, 'utf8') > MAX_DIRECTMAIL_CSV_BYTES) {
+    throw new Error('Alibaba DirectMail CSV import exceeds maximum size of 5 MB.');
+  }
+
   const rows = parse(params.csvContent, {
-    columns: true,
+    columns: (header: string[]) =>
+      header.map((h) => {
+        const clean = h.trim().toLowerCase();
+        return FORBIDDEN_CSV_HEADERS.has(clean) ? false : clean;
+      }),
     skip_empty_lines: true,
     trim: true,
+    max_record_size: 65_536,
+    to_line: MAX_DIRECTMAIL_CSV_ROWS + 1,
   }) as Array<Record<string, string>>;
 
   let rowsImported = 0;

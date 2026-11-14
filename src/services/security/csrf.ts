@@ -4,7 +4,16 @@ import { timingSafeEqualString } from './crypto';
 import type { AuthenticatedSession } from './auth';
 
 function getSigningSecret(): string {
-  return getEnv().APP_SESSION_SECRET ?? 'dev-fallback-session-secret-change-me';
+  const env = getEnv();
+  if (env.APP_SESSION_SECRET && env.APP_SESSION_SECRET.length >= 32) {
+    return env.APP_SESSION_SECRET;
+  }
+  if (env.NODE_ENV === 'production') {
+    throw new Error(
+      'APP_SESSION_SECRET (>= 32 chars) is required in production to sign CSRF tokens.'
+    );
+  }
+  return 'dev-fallback-session-secret-change-me';
 }
 
 export function deriveCsrfToken(session: Pick<AuthenticatedSession, 'sessionId' | 'csrfSecret'>): string {

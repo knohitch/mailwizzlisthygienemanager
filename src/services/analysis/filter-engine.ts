@@ -135,7 +135,7 @@ export interface FilterGroup {
   groups?: FilterGroup[];
 }
 
-export const FilterGroupSchema: z.ZodType<FilterGroup, z.ZodTypeDef, unknown> = z.lazy(() =>
+export const FilterGroupSchema: z.ZodType<FilterGroup> = z.lazy(() =>
   z.object({
     combinator: z.enum(['AND', 'OR']).default('AND'),
     conditions: z.array(FilterConditionSchema).default([]),

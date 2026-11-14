@@ -1,3 +1,5 @@
+import net from 'node:net';
+
 interface WindowEntry {
   timestamps: number[];
 }
@@ -55,9 +57,14 @@ export function clearRateLimitsForTests(): void {
 }
 
 export function getClientIp(headers: Headers): string {
+  const realIp = headers.get('x-real-ip')?.trim();
   const forwarded = headers.get('x-forwarded-for');
-  if (forwarded) {
-    return forwarded.split(',')[0]?.trim() || 'unknown';
+  const candidate = forwarded
+    ? (forwarded.split(',')[0]?.trim() ?? '')
+    : (realIp ?? '127.0.0.1');
+  const normalized = candidate.startsWith('::ffff:') ? candidate.slice(7) : candidate;
+  if (net.isIP(normalized) !== 0) {
+    return normalized;
   }
-  return headers.get('x-real-ip') ?? '127.0.0.1';
+  return 'invalid';
 }

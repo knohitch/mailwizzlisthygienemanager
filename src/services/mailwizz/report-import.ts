@@ -31,24 +31,43 @@ export interface ReportImportSummary {
   duplicateCount: number;
 }
 
+const MAX_REPORT_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_REPORT_IMPORT_ROWS = 100_000;
+const FORBIDDEN_CSV_HEADERS = new Set(['__proto__', 'constructor', 'prototype']);
+
 export async function importVerifiedCampaignReport(params: {
   format: 'csv' | 'json';
   content: string;
   defaultCampaignUid?: string;
   mailingListId?: string;
 }): Promise<ReportImportSummary> {
+  if (Buffer.byteLength(params.content, 'utf8') > MAX_REPORT_IMPORT_BYTES) {
+    throw new Error('Report import exceeds maximum allowed size of 10 MB.');
+  }
+
   let rawRows: Array<Record<string, unknown>>;
 
   if (params.format === 'csv') {
     rawRows = parse(params.content, {
-      columns: (header: string[]) => header.map((h) => h.trim().toLowerCase()),
+      columns: (header: string[]) =>
+        header.map((h) => {
+          const clean = h.trim().toLowerCase();
+          return FORBIDDEN_CSV_HEADERS.has(clean) ? false : clean;
+        }),
       skip_empty_lines: true,
       trim: true,
+      max_record_size: 65_536,
+      to_line: MAX_REPORT_IMPORT_ROWS + 1,
     }) as Array<Record<string, unknown>>;
   } else {
     const parsedJson: unknown = JSON.parse(params.content);
     if (!Array.isArray(parsedJson)) {
       throw new Error('JSON report import must be an array of engagement records.');
+    }
+    if (parsedJson.length > MAX_REPORT_IMPORT_ROWS) {
+      throw new Error(
+        `JSON report import exceeds maximum row limit (${MAX_REPORT_IMPORT_ROWS}).`
+      );
     }
     rawRows = parsedJson as Array<Record<string, unknown>>;
   }

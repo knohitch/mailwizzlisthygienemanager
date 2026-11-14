@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { maskEmail } from '@/services/cleanup/safety';
+import { sanitizeCsvCell } from '@/services/security/csv';
 
 export type HygieneReportType =
   | 'ACTIVE_AUDIENCE'
@@ -219,12 +220,7 @@ export async function generateReportCsv(params: {
   const mask = params.maskContacts ?? false;
   const whereList = params.mailingListId ? { mailingListId: params.mailingListId } : {};
 
-  const esc = (v: unknown) => {
-    const s = String(v ?? '');
-    return s.includes(',') || s.includes('"') || s.includes('\n')
-      ? `"${s.replace(/"/g, '""')}"`
-      : s;
-  };
+  const esc = sanitizeCsvCell;
 
   if (params.reportType === 'CLEANUP_EXECUTION') {
     const ops = await prisma.cleanupOperation.findMany({

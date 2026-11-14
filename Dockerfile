@@ -16,7 +16,7 @@ RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
-RUN apk add --no-cache openssl && addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN apk add --no-cache openssl && addgroup -S appgroup && adduser -S appuser -G appgroup && mkdir -p /app/backups && chown appuser:appgroup /app/backups
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000

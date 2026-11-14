@@ -45,7 +45,11 @@ const PERMANENTLY_FORBIDDEN_WRITE_PATHS = [
   'track-opening',
   'track-url',
   'track-unsubscribe',
-  'unsubscribe-by-email-from-all-lists',
+  '/tracking/',
+  '/tracking/open',
+  '/tracking/click',
+  '/tracking/unsubscribe',
+  'unsubscribe-by-email',
 ];
 
 const RETRYABLE_HTTP_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);

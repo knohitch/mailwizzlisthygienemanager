@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { buildPrismaWhereFromFilter, type FilterGroup } from '@/services/analysis/filter-engine';
 import { isMailWizzMutationsEnabled } from '@/services/mutations/mailwizz-writer';
 import { recordAuditLog } from '@/services/security/audit';
+import { sanitizeCsvCell } from '@/services/security/csv';
 import { encryptSecret, sha256Hex } from '@/services/security/crypto';
 import { enqueueJob } from '@/services/jobs/queue';
 import {
@@ -48,6 +49,20 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
     update: {},
     create: { id: 'default' },
   });
+
+  if (input.mailingListId && input.explicitSubscriberIds && input.explicitSubscriberIds.length > 0) {
+    const crossListCount = await prisma.subscriber.count({
+      where: {
+        id: { in: input.explicitSubscriberIds },
+        mailingListId: { not: input.mailingListId },
+      },
+    });
+    if (crossListCount > 0) {
+      throw new Error(
+        `Subscriber list scoping violation: ${crossListCount} explicit subscriber ID(s) do not belong to the selected mailing list and cannot be substituted across lists.`
+      );
+    }
+  }
 
   const filterWhere = buildPrismaWhereFromFilter(input.filter);
   const clauses: Prisma.SubscriberWhereInput[] = [];
@@ -104,6 +119,14 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
     throw new Error(
       `Multi-list protection: selection spans ${distinctLists.size} lists. Filter to a single list or set explicit multi-list authorization (never auto-unsubscribe across all lists from single-list inactivity).`
     );
+  }
+  if (input.actionType === 'CREATE_SEGMENT' && distinctLists.size > 1) {
+    throw new Error(
+      `Segment scoping violation: selection spans ${distinctLists.size} lists. MailWizz segments must belong to a single list.`
+    );
+  }
+  if (input.actionType === 'MOVE_SUBSCRIBERS' && !input.targetListUid) {
+    throw new Error('MOVE_SUBSCRIBERS requires an explicit targetListUid.');
   }
   if (distinctLists.size > 1 && input.actionType === 'UNSUBSCRIBE') {
     warnings.push(
@@ -427,6 +450,24 @@ export async function confirmAndEnqueueCleanup(input: ConfirmCleanupInput) {
     );
   }
 
+  const claimed = await prisma.cleanupOperation.updateMany({
+    where: { id: op.id, status: 'DRY_RUN_READY', dryRunOnly: true },
+    data: {
+      dryRunOnly: false,
+      status: 'CONFIRMED',
+      confirmedByEmail: input.actorEmail,
+      confirmedListName: input.confirmedListName.trim(),
+      confirmedCount: input.confirmedCount,
+      largeBatchApprovedBy: input.largeBatchApproved ? input.actorEmail : null,
+      confirmedAt: new Date(),
+    },
+  });
+  if (claimed.count === 0) {
+    throw new Error(
+      'Operation could not be confirmed because it was already confirmed or modified concurrently.'
+    );
+  }
+
   const job = await enqueueJob({
     type: 'HYGIENE_EXECUTION',
     payload: { operationId: op.id, actorEmail: input.actorEmail },
@@ -436,14 +477,7 @@ export async function confirmAndEnqueueCleanup(input: ConfirmCleanupInput) {
   const updated = await prisma.cleanupOperation.update({
     where: { id: op.id },
     data: {
-      dryRunOnly: false,
-      status: 'CONFIRMED',
       syncJobId: job.id,
-      confirmedByEmail: input.actorEmail,
-      confirmedListName: input.confirmedListName.trim(),
-      confirmedCount: input.confirmedCount,
-      largeBatchApprovedBy: input.largeBatchApproved ? input.actorEmail : null,
-      confirmedAt: new Date(),
     },
   });
 
@@ -475,12 +509,7 @@ export async function buildDryRunCsvReport(operationId: string): Promise<string>
     ['subscriber_uid', 'list_uid', 'masked_email', 'current_status', 'engagement_status', 'intended_action', 'dry_run_eligibility', 'reason'].join(','),
   ];
 
-  const esc = (v: unknown) => {
-    const s = String(v ?? '');
-    return s.includes(',') || s.includes('"') || s.includes('\n')
-      ? `"${s.replace(/"/g, '""')}"`
-      : s;
-  };
+  const esc = sanitizeCsvCell;
 
   for (const r of records) {
     lines.push(

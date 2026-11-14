@@ -1,4 +1,5 @@
 import dns from 'node:dns/promises';
+import net from 'node:net';
 import { prisma } from '@/lib/db';
 import { recordAuditLog } from '@/services/security/audit';
 import type { DnsCheckStatus, Prisma } from '@prisma/client';
@@ -49,13 +50,69 @@ export interface DnsDiagnosticResult {
   recommendations: string[];
 }
 
+const RESERVED_INTERNAL_SUFFIXES = [
+  'localhost',
+  '.localhost',
+  '.local',
+  '.internal',
+  '.lan',
+  '.home',
+  '.corp',
+  '.intranet',
+  '.arpa',
+];
+
+function isValidPublicDomainName(raw: string): boolean {
+  if (!raw || raw.length > 253) return false;
+  if (/[/:@\s\\?#]/.test(raw)) return false;
+  const unbracketed = raw.replace(/^\[|\]$/g, '');
+  if (net.isIP(unbracketed) !== 0) return false;
+  if (
+    RESERVED_INTERNAL_SUFFIXES.some(
+      (suffix) => raw === suffix.replace(/^\./, '') || raw.endsWith(suffix)
+    )
+  ) {
+    return false;
+  }
+  const labels = raw.split('.');
+  if (labels.length < 2) return false;
+  return labels.every(
+    (label) =>
+      label.length >= 1 &&
+      label.length <= 63 &&
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)
+  );
+}
+
+function isPrivateOrReservedIpv4(ip: string): boolean {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) {
+    return true;
+  }
+  const [a, b] = parts;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
 function normalizeDomain(raw: string): string {
-  return raw
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .split('/')[0]
-    .replace(/\.$/, '');
+  const cleaned = raw.trim().toLowerCase().replace(/\.$/, '');
+  if (!cleaned) return '';
+  if (cleaned.includes('://') || /[@/:\\?#\s]/.test(cleaned)) {
+    throw new Error(
+      'Invalid hostname: enter a plain public DNS domain (without protocol, port, path, or credentials).'
+    );
+  }
+  if (!isValidPublicDomainName(cleaned)) {
+    throw new Error(
+      `Invalid or internal/private target hostname "${cleaned}". Only valid public FQDNs are permitted for DNS diagnostics.`
+    );
+  }
+  return cleaned;
 }
 
 function getOrgDomain(domain: string): string {
@@ -264,16 +321,26 @@ export async function analyzeDomainDns(
     } catch {
       // ignore CNAME miss, check A record
     }
+    let resolvedPrivateIp = false;
     if (!resolvedVia) {
       try {
         const ipv4 = await resolver.resolve4(trackingDomain);
-        if (ipv4.length > 0) resolvedVia = `A -> ${ipv4.join(', ')}`;
+        if (ipv4.length > 0) {
+          resolvedPrivateIp = ipv4.some((ip) => isPrivateOrReservedIpv4(ip));
+          resolvedVia = `A -> ${ipv4.join(', ')}`;
+        }
       } catch {
         // unresolved
       }
     }
 
-    if (!resolvedVia) {
+    if (resolvedPrivateIp) {
+      trackingStatus = 'FAIL';
+      trackingDetail = `Tracking domain ${trackingDomain} resolves to a private/loopback/reserved IP address (${resolvedVia}), which is unsafe for external tracking.`;
+      recommendations.push(
+        `Point tracking domain ${trackingDomain} to a public HTTPS reverse proxy IP instead of an internal/loopback IP.`
+      );
+    } else if (!resolvedVia) {
       trackingStatus = 'FAIL';
       trackingDetail = `Tracking domain ${trackingDomain} has no resolvable CNAME or A DNS record.`;
       recommendations.push(

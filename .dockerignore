@@ -1,0 +1,16 @@
+# Exclude secrets, local build artifacts, and tests from Docker build context
+.git/
+.gitignore
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+out/
+backups/
+coverage/
+playwright-report/
+test-results/
+tsconfig.tsbuildinfo
+*.log
+npm-debug.log*

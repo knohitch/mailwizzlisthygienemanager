@@ -10,6 +10,10 @@ import {
 } from '@/services/mutations/gate';
 import { recordAuditLog } from '@/services/security/audit';
 import { logger } from '@/services/security/logger';
+import {
+  evaluateActionEligibility,
+  type SubscriberSafetyCandidate,
+} from './safety';
 import type { Prisma } from '@prisma/client';
 
 export interface CleanupExecutionResult {
@@ -35,6 +39,31 @@ export async function executeCleanupOperation(params: {
   if (!op) throw new Error(`CleanupOperation ${params.operationId} not found.`);
   if (op.dryRunOnly) {
     throw new Error('Cannot execute a DRY RUN operation without explicit confirmation.');
+  }
+  if (op.status === 'COMPLETED' || op.status === 'CANCELLED') {
+    return {
+      operationId: op.id,
+      finalStatus: op.status,
+      succeededCount: op.succeededCount,
+      skippedCount: op.skippedCount,
+      failedCount: op.failedCount,
+      reconciledCount: op.reconciledCount,
+    };
+  }
+  if (params.syncJobId && op.syncJobId && op.syncJobId !== params.syncJobId) {
+    logger.warn('Skipping stale duplicate cleanup job', {
+      operationId: op.id,
+      expectedJobId: op.syncJobId,
+      actualJobId: params.syncJobId,
+    });
+    return {
+      operationId: op.id,
+      finalStatus: op.status === 'PAUSED' ? 'PAUSED' : 'CANCELLED',
+      succeededCount: op.succeededCount,
+      skippedCount: op.skippedCount,
+      failedCount: op.failedCount,
+      reconciledCount: op.reconciledCount,
+    };
   }
 
   const actor = params.actorEmail ?? op.confirmedByEmail ?? op.createdByEmail;
@@ -275,9 +304,17 @@ export async function executeCleanupOperation(params: {
       const freshSub = await prisma.subscriber.findUnique({
         where: { id: rec.subscriberId },
         include: {
+          mailingList: {
+            select: { id: true, listUid: true },
+          },
           engagementEvents: {
-            where: { occurredAt: { gt: op.createdAt } },
-            select: { eventType: true, occurredAt: true, source: true },
+            select: {
+              eventType: true,
+              source: true,
+              occurredAt: true,
+              isHistorical: true,
+              campaignId: true,
+            },
           },
         },
       });
@@ -295,8 +332,39 @@ export async function executeCleanupOperation(params: {
         continue;
       }
 
-      // Mid-job safety re-verification: check for renewed engagement or protection changes since dry run
+      // Enforce list-scoping integrity so subscriber UIDs cannot be substituted across lists
+      if (
+        freshSub.mailingList.listUid !== rec.mailingListUid ||
+        freshSub.subscriberUid !== rec.subscriberUid ||
+        (op.mailingListId && freshSub.mailingListId !== op.mailingListId)
+      ) {
+        await prisma.cleanupOperationRecord.update({
+          where: { id: rec.id },
+          data: {
+            outcome: 'SKIPPED',
+            reason: 'Blocked: subscriber/mailing-list scoping mismatch.',
+            processedAt: new Date(),
+          },
+        });
+        await recordAuditLog({
+          actorEmail: actor,
+          action: 'CLEANUP_LIST_SCOPING_BLOCKED',
+          resourceType: 'CleanupOperationRecord',
+          resourceId: rec.id,
+          outcome: 'DENIED',
+          details: {
+            operationId: op.id,
+            expectedListUid: rec.mailingListUid,
+            actualListUid: freshSub.mailingList.listUid,
+          },
+        });
+        skippedCount++;
+        continue;
+      }
+
+      // Live pre-mutation re-verification: reclassify engagement and verify eligibility right before acting
       const hasMidJobEngagement = freshSub.engagementEvents.some((ev) => {
+        if (ev.occurredAt.getTime() <= op.createdAt.getTime()) return false;
         if (ev.eventType === 'CLICK' || ev.eventType === 'REPLY' || ev.eventType === 'CONVERSION') {
           return true;
         }
@@ -306,51 +374,87 @@ export async function executeCleanupOperation(params: {
         return false;
       });
 
+      const reclassified = classifySubscriber(
+        {
+          email: freshSub.email,
+          status: freshSub.status,
+          source: freshSub.source,
+          dateAddedMailwizz: freshSub.dateAddedMailwizz,
+          isVip: freshSub.isVip,
+          hasPaidRelationship: freshSub.hasPaidRelationship,
+          lastPurchaseAt: freshSub.lastPurchaseAt,
+          isSuppressed: freshSub.isSuppressed,
+          isArchived: freshSub.isArchived,
+          events: freshSub.engagementEvents,
+        },
+        ruleConfig
+      );
+
       if (
-        hasMidJobEngagement ||
-        (op.actionType !== 'COPY_SUBSCRIBERS' &&
-          op.actionType !== 'CREATE_LIST' &&
-          (freshSub.isVip || freshSub.hasPaidRelationship || freshSub.status !== 'CONFIRMED'))
+        reclassified.engagementStatus !== freshSub.engagementStatus ||
+        reclassified.historyCoverage !== freshSub.historyCoverage ||
+        reclassified.complaintsCount !== freshSub.complaintsCount ||
+        reclassified.hardBouncesCount !== freshSub.hardBouncesCount
       ) {
+        await prisma.subscriber.update({
+          where: { id: freshSub.id },
+          data: {
+            isExcluded: reclassified.isExcluded,
+            exclusionReason: reclassified.exclusionReason,
+            engagementStatus: reclassified.engagementStatus,
+            engagementReason: reclassified.engagementReason,
+            hygieneStatus: reclassified.hygieneStatus,
+            hygieneReason: reclassified.hygieneReason,
+            historyCoverage: reclassified.historyCoverage,
+            deliveredCampaignsCount: reclassified.deliveredCampaignsCount,
+            complaintsCount: reclassified.complaintsCount,
+            hardBouncesCount: reclassified.hardBouncesCount,
+            lastClickAt: reclassified.lastClickAt,
+            lastReplyAt: reclassified.lastReplyAt,
+            lastConversionAt: reclassified.lastConversionAt,
+          },
+        });
+      }
+
+      const freshCandidate: SubscriberSafetyCandidate = {
+        id: freshSub.id,
+        subscriberUid: freshSub.subscriberUid,
+        mailingListId: freshSub.mailingListId,
+        mailingListUid: freshSub.mailingList.listUid,
+        email: freshSub.email,
+        firstName: freshSub.firstName,
+        lastName: freshSub.lastName,
+        status: freshSub.status,
+        engagementStatus: reclassified.engagementStatus,
+        historyCoverage: reclassified.historyCoverage,
+        deliveredCampaignsCount: reclassified.deliveredCampaignsCount,
+        clicksCount: reclassified.clicksCount,
+        repliesCount: reclassified.repliesCount,
+        conversionsCount: reclassified.conversionsCount,
+        hardBouncesCount: reclassified.hardBouncesCount,
+        complaintsCount: reclassified.complaintsCount,
+        lastClickAt: reclassified.lastClickAt,
+        lastReplyAt: reclassified.lastReplyAt,
+        lastConversionAt: reclassified.lastConversionAt,
+        lastPurchaseAt: freshSub.lastPurchaseAt,
+        isExcluded: reclassified.isExcluded,
+        exclusionReason: reclassified.exclusionReason,
+        isVip: freshSub.isVip,
+        hasPaidRelationship: freshSub.hasPaidRelationship,
+        isSuppressed: freshSub.isSuppressed,
+        isArchived: freshSub.isArchived,
+      };
+
+      const recheckDecision = evaluateActionEligibility(
+        freshCandidate,
+        op.actionType,
+        { minDeliveredCampaigns: ruleConfig.minDeliveredCampaigns }
+      );
+
+      if (hasMidJobEngagement || !recheckDecision.eligible) {
         const skipReason = hasMidJobEngagement
           ? 'Skipped mid-job: renewed engagement event occurred after dry-run preview.'
-          : `Skipped mid-job: subscriber became ${freshSub.status} or protected.`;
-
-        if (hasMidJobEngagement) {
-          // Reclassify immediately if renewed engagement occurred mid-job
-          const fullEvents = await prisma.engagementEvent.findMany({
-            where: { subscriberId: freshSub.id },
-            select: {
-              eventType: true,
-              source: true,
-              occurredAt: true,
-              isHistorical: true,
-              campaignId: true,
-            },
-          });
-          const reclassified = classifySubscriber(
-            {
-              email: freshSub.email,
-              status: freshSub.status,
-              source: freshSub.source,
-              dateAddedMailwizz: freshSub.dateAddedMailwizz,
-              isVip: freshSub.isVip,
-              hasPaidRelationship: freshSub.hasPaidRelationship,
-              lastPurchaseAt: freshSub.lastPurchaseAt,
-              events: fullEvents,
-            },
-            ruleConfig
-          );
-          await prisma.subscriber.update({
-            where: { id: freshSub.id },
-            data: {
-              engagementStatus: reclassified.engagementStatus,
-              engagementReason: reclassified.engagementReason,
-              hygieneStatus: reclassified.hygieneStatus,
-              hygieneReason: reclassified.hygieneReason,
-            },
-          });
-        }
+          : `Skipped at pre-mutation recheck: ${recheckDecision.reason}`;
 
         await prisma.cleanupOperationRecord.update({
           where: { id: rec.id },
@@ -409,12 +513,29 @@ export async function executeCleanupOperation(params: {
           });
           succeededCount++;
         } else if (op.actionType === 'UNSUBSCRIBE' && client) {
-          // Verify remote status first to detect discrepancies
+          // Verify remote status & subscriber identity first to detect discrepancies or UID mismatch
           const remoteBefore = await client.getRemoteSubscriber(
             rec.mailingListUid,
             rec.subscriberUid
           );
-          const remoteStatus = remoteBefore.data?.record?.status?.toLowerCase();
+          const remoteRecord = remoteBefore.data?.record;
+          if (
+            remoteRecord?.subscriber_uid &&
+            remoteRecord.subscriber_uid !== rec.subscriberUid
+          ) {
+            throw new Error(
+              `Remote subscriber UID mismatch (expected ${rec.subscriberUid}, got ${remoteRecord.subscriber_uid}); aborting unsubscribe.`
+            );
+          }
+          if (
+            remoteRecord?.email &&
+            remoteRecord.email.trim().toLowerCase() !== freshSub.email.trim().toLowerCase()
+          ) {
+            throw new Error(
+              'Remote subscriber email mismatch against local snapshot; aborting unsubscribe.'
+            );
+          }
+          const remoteStatus = remoteRecord?.status?.toLowerCase();
 
           if (remoteStatus && remoteStatus !== 'confirmed') {
             await prisma.subscriber.update({
@@ -495,6 +616,56 @@ export async function executeCleanupOperation(params: {
               outcome: 'SUCCEEDED',
               attemptCount: { increment: 1 },
               reason: `Copied cleanly to list ${targetUid}; original list untouched.`,
+              processedAt: now,
+            },
+          });
+          succeededCount++;
+        } else if (op.actionType === 'MOVE_SUBSCRIBERS' && client) {
+          const updatedOp = await prisma.cleanupOperation.findUnique({
+            where: { id: op.id },
+            select: { targetListUid: true },
+          });
+          const targetUid = updatedOp?.targetListUid ?? op.targetListUid;
+          if (!targetUid) {
+            throw new Error('MOVE_SUBSCRIBERS requires targetListUid.');
+          }
+          const targetListMeta = await client.getRemoteList(targetUid);
+          await client.createSubscribersBulk({
+            targetListUid: targetUid,
+            targetListOptIn: targetListMeta.data?.record?.general?.opt_in,
+            subscribers: [
+              {
+                EMAIL: freshSub.email,
+                ...(freshSub.firstName ? { FNAME: freshSub.firstName } : {}),
+                ...(freshSub.lastName ? { LNAME: freshSub.lastName } : {}),
+              },
+            ],
+            actorEmail: actor,
+          });
+          // Only unsubscribe source list after verified copy into target list succeeds
+          await client.unsubscribeSubscriber({
+            listUid: rec.mailingListUid,
+            subscriberUid: rec.subscriberUid,
+            actorEmail: actor,
+          });
+          await prisma.subscriber.update({
+            where: { id: freshSub.id },
+            data: {
+              status: 'MOVED',
+              rawStatus: 'moved',
+              hygieneStatus: 'EXCLUDED',
+              engagementStatus: 'EXCLUDED',
+              engagementReason: `Moved safely to list ${targetUid} by hygiene operation ${op.id}.`,
+            },
+          });
+          await prisma.cleanupOperationRecord.update({
+            where: { id: rec.id },
+            data: {
+              outcome: 'SUCCEEDED',
+              remoteStatusBefore: freshSub.rawStatus ?? 'confirmed',
+              remoteStatusAfter: 'moved',
+              attemptCount: { increment: 1 },
+              reason: `Copied cleanly to list ${targetUid} and unsubscribed from ${rec.mailingListUid}.`,
               processedAt: now,
             },
           });

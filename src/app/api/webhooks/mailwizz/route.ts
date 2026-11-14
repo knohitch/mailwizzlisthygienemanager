@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
@@ -9,6 +10,11 @@ import {
 import { checkRateLimit, getClientIp } from '@/services/security/rate-limit';
 import { logger } from '@/services/security/logger';
 import type { EngagementEventType } from '@prisma/client';
+
+const MAX_WEBHOOK_ITEMS = 500;
+const MAX_WEBHOOK_BODY_BYTES = 512 * 1024;
+const MAX_WEBHOOK_AGE_MS = 7 * 86_400_000; // 7 days replay tolerance
+const MAX_WEBHOOK_FUTURE_SKEW_MS = 5 * 60_000; // 5 minutes clock skew
 
 function mapWebhookEventType(raw: string): EngagementEventType | null {
   const s = raw.trim().toLowerCase();
@@ -23,19 +29,21 @@ function mapWebhookEventType(raw: string): EngagementEventType | null {
   return null;
 }
 
-function normalizeWebhookItems(body: unknown): Array<{
+interface NormalizedWebhookItem {
   eventTypeRaw: string;
   timestamp?: string | number;
   campaignUid: string;
   subscriberUid: string;
-}> {
+  listUid?: string;
+  eventId?: string;
+}
+
+function normalizeWebhookItems(body: unknown): NormalizedWebhookItem[] {
   const list = Array.isArray(body) ? body : [body];
-  const out: Array<{
-    eventTypeRaw: string;
-    timestamp?: string | number;
-    campaignUid: string;
-    subscriberUid: string;
-  }> = [];
+  if (list.length > MAX_WEBHOOK_ITEMS) {
+    throw new Error(`Webhook batch exceeds limit of ${MAX_WEBHOOK_ITEMS} events.`);
+  }
+  const out: NormalizedWebhookItem[] = [];
 
   for (const item of list) {
     if (!item || typeof item !== 'object') continue;
@@ -52,6 +60,10 @@ function normalizeWebhookItems(body: unknown): Array<{
       obj.subscriber && typeof obj.subscriber === 'object'
         ? (obj.subscriber as Record<string, unknown>)
         : obj;
+    const listObj =
+      obj.list && typeof obj.list === 'object'
+        ? (obj.list as Record<string, unknown>)
+        : obj;
 
     const eventTypeRaw = String(eventObj.type ?? obj.event_type ?? obj.type ?? '').trim();
     const campaignUid = String(
@@ -60,13 +72,19 @@ function normalizeWebhookItems(body: unknown): Array<{
     const subscriberUid = String(
       subObj.uid ?? subObj.subscriber_uid ?? obj.subscriber_uid ?? ''
     ).trim();
+    const listUid = String(
+      listObj.list_uid ?? listObj.uid ?? obj.list_uid ?? subObj.list_uid ?? ''
+    ).trim() || undefined;
+    const eventId = String(
+      eventObj.id ?? eventObj.event_id ?? obj.event_id ?? ''
+    ).trim() || undefined;
 
     const tsRaw = eventObj.timestamp ?? obj.timestamp ?? obj.date_added;
     const timestamp =
       typeof tsRaw === 'string' || typeof tsRaw === 'number' ? tsRaw : undefined;
 
     if (eventTypeRaw && campaignUid && subscriberUid) {
-      out.push({ eventTypeRaw, timestamp, campaignUid, subscriberUid });
+      out.push({ eventTypeRaw, timestamp, campaignUid, subscriberUid, listUid, eventId });
     }
   }
   return out;
@@ -95,25 +113,53 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const rawBody = await req.text();
+  if (Buffer.byteLength(rawBody, 'utf8') > MAX_WEBHOOK_BODY_BYTES) {
+    return NextResponse.json({ error: 'Webhook payload too large.' }, { status: 413 });
+  }
+
   const providedSecret = req.headers.get('x-hygiene-webhook-secret') ?? '';
-  if (!timingSafeEqualString(expectedSecret, providedSecret)) {
-    return NextResponse.json({ error: 'Invalid webhook secret.' }, { status: 401 });
+  const providedSig = req.headers.get('x-hygiene-webhook-signature') ?? '';
+
+  let authenticated = Boolean(providedSecret && timingSafeEqualString(expectedSecret, providedSecret));
+  if (!authenticated && providedSig) {
+    const cleanSig = providedSig.replace(/^sha256=/i, '').trim().toLowerCase();
+    const expectedHmac = crypto
+      .createHmac('sha256', expectedSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex')
+      .toLowerCase();
+    authenticated = timingSafeEqualString(expectedHmac, cleanSig);
+  }
+
+  if (!authenticated) {
+    return NextResponse.json({ error: 'Invalid webhook authentication.' }, { status: 401 });
   }
 
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 });
   }
 
-  const items = normalizeWebhookItems(body);
+  let items: NormalizedWebhookItem[];
+  try {
+    items = normalizeWebhookItems(body);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Invalid webhook batch.' },
+      { status: 400 }
+    );
+  }
+
   if (items.length === 0) {
     return NextResponse.json({ error: 'Unsupported webhook payload.' }, { status: 400 });
   }
 
   let recordedCount = 0;
   let ignoredCount = 0;
+  const nowMs = Date.now();
 
   for (const item of items) {
     const eventType = mapWebhookEventType(item.eventTypeRaw);
@@ -122,8 +168,41 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    let safeOccurredAt: Date;
+    let replayToken: string;
+    if (item.timestamp !== undefined) {
+      const occurredAt = new Date(item.timestamp);
+      if (Number.isNaN(occurredAt.getTime())) {
+        ignoredCount++;
+        continue;
+      }
+      const ageMs = nowMs - occurredAt.getTime();
+      if (ageMs > MAX_WEBHOOK_AGE_MS || ageMs < -MAX_WEBHOOK_FUTURE_SKEW_MS) {
+        ignoredCount++;
+        continue;
+      }
+      safeOccurredAt = occurredAt;
+      replayToken = item.eventId ?? safeOccurredAt.toISOString();
+    } else {
+      safeOccurredAt = new Date(nowMs);
+      // Deterministic dedupe token prevents duplicate inserts when unsigned/no-timestamp payloads replay
+      replayToken = item.eventId ?? 'no_ts';
+    }
+
+    const campRecord = await prisma.campaign.findUnique({
+      where: { campaignUid: item.campaignUid },
+      select: { id: true, mailingListId: true },
+    });
+
     const subRecord = await prisma.subscriber.findFirst({
-      where: { subscriberUid: item.subscriberUid },
+      where: {
+        subscriberUid: item.subscriberUid,
+        ...(item.listUid
+          ? { mailingList: { listUid: item.listUid } }
+          : campRecord?.mailingListId
+            ? { mailingListId: campRecord.mailingListId }
+            : {}),
+      },
       select: { id: true, mailingListId: true },
     });
 
@@ -132,17 +211,8 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const campRecord = await prisma.campaign.findUnique({
-      where: { campaignUid: item.campaignUid },
-      select: { id: true },
-    });
-
-    const occurredAt =
-      item.timestamp !== undefined ? new Date(item.timestamp) : new Date();
-    const safeOccurredAt = Number.isNaN(occurredAt.getTime()) ? new Date() : occurredAt;
-
     const dedupeKey = sha256Hex(
-      `WEBHOOK_LIVE|${item.campaignUid}|${item.subscriberUid}|${eventType}|${safeOccurredAt.toISOString()}`
+      `WEBHOOK_LIVE|${subRecord.mailingListId}|${item.campaignUid}|${item.subscriberUid}|${eventType}|${replayToken}`
     );
 
     await prisma.engagementEvent.upsert({

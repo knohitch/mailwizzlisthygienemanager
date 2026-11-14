@@ -24,7 +24,7 @@ export const MailWizzPaginatedEnvelopeSchema = <T extends z.ZodTypeAny>(recordSc
     z
       .object({
         status: z.enum(['success', 'error']).default('success'),
-        error: z.union([z.string(), z.record(z.unknown()), z.array(z.unknown())]).optional(),
+        error: z.union([z.string(), z.record(z.string(), z.unknown()), z.array(z.unknown())]).optional(),
         data: z
           .object({
             count: tolerantInt(0),
@@ -75,7 +75,7 @@ export const MailWizzSingleListResponseSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
       data: z
         .object({
           record: MailWizzListRecordSchema,
@@ -120,7 +120,7 @@ export const MailWizzSegmentDetailSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
       data: z
         .object({
           record: z
@@ -161,7 +161,7 @@ export const MailWizzCampaignDetailSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
       data: z
         .object({
           record: z
@@ -209,7 +209,7 @@ export const MailWizzCampaignStatsSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
       data: z
         .object({
           campaign_status: z.string().optional(),
@@ -313,7 +313,7 @@ export const MailWizzSingleSubscriberResponseSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
       data: z
         .object({
           record: MailWizzSubscriberRecordSchema,
@@ -338,7 +338,7 @@ export const MailWizzListFieldsResponseSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
       data: z
         .object({
           records: tolerantArray(MailWizzListFieldRecordSchema),
@@ -354,7 +354,7 @@ export const MailWizzConditionOperatorsResponseSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
       data: z
         .object({
           records: tolerantArray(
@@ -378,7 +378,7 @@ export const MailWizzCreateListResponseSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown()), z.array(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown()), z.array(z.unknown())]).optional(),
       list_uid: z.string().optional(),
       data: z
         .object({
@@ -402,7 +402,7 @@ export const MailWizzSegmentMutationResponseSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown()), z.array(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown()), z.array(z.unknown())]).optional(),
       data: z
         .object({
           segment_uid: z.string().optional(),
@@ -424,7 +424,7 @@ export const MailWizzSimpleStatusResponseSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown()), z.array(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown()), z.array(z.unknown())]).optional(),
     })
     .passthrough()
 );
@@ -434,7 +434,7 @@ export const MailWizzBulkSubscribersResponseSchema = z.preprocess(
   z
     .object({
       status: z.enum(['success', 'error']).default('success'),
-      error: z.union([z.string(), z.record(z.unknown()), z.array(z.unknown())]).optional(),
+      error: z.union([z.string(), z.record(z.string(), z.unknown()), z.array(z.unknown())]).optional(),
       data: z
         .object({
           records: tolerantArray(

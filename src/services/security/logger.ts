@@ -6,6 +6,7 @@ const SECRET_KEYS = new Set([
   'secret',
   'token',
   'authorization',
+  'proxy-authorization',
   'cookie',
   'database_url',
   'reportingdburl',
@@ -13,6 +14,16 @@ const SECRET_KEYS = new Set([
   'mailwizzapikeyenc',
   'app_session_secret',
   'app_encryption_key',
+  'accesskeyid',
+  'access_key_id',
+  'accesskeysecret',
+  'access_key_secret',
+  'csrfsecret',
+  'rawtoken',
+  'snapshotenc',
+  'privatekey',
+  'private_key',
+  'x-mw-signature',
 ]);
 
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -53,7 +64,14 @@ export function sanitizeForLog(value: unknown, depth = 0): unknown {
         normalized.includes('password') ||
         normalized.includes('apikey') ||
         normalized.includes('api_key') ||
-        normalized.includes('token')
+        normalized.includes('token') ||
+        normalized.includes('credential') ||
+        normalized.includes('privatekey') ||
+        normalized.includes('private_key') ||
+        normalized.includes('accesskey') ||
+        normalized.includes('access_key') ||
+        normalized.includes('encryption') ||
+        normalized.includes('signature')
       ) {
         out[k] = '[REDACTED_SECRET]';
       } else if (
