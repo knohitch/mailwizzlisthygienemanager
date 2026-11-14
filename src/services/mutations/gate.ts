@@ -6,15 +6,78 @@ import {
   isMailWizzMutationsEnabled,
   MailWizzMutationClient,
   MutationGateLockedError,
+  UnsafeOperationBlockedError,
 } from './mailwizz-writer';
+import { mailWizzFutureAdapterResolver } from '@/services/mailwizz/adapter-resolver';
+import { mailWizzCapabilityRegistry } from '@/services/mailwizz/capability-registry';
 import type { MailWizzAuthMode } from '@/services/mailwizz/compat';
+import { mailWizzVersionDetector } from '@/services/mailwizz/version-detector';
 
-export { isMailWizzMutationsEnabled, MailWizzMutationClient, MutationGateLockedError };
+export {
+  isMailWizzMutationsEnabled,
+  MailWizzMutationClient,
+  MutationGateLockedError,
+  UnsafeOperationBlockedError,
+};
+
+/**
+ * Verifies version compatibility and contract checks allow remote mutations (fail-closed on
+ * unverified major releases, custom versions, or failed compatibility contracts).
+ */
+export async function assertCompatibilityPermitsRemoteMutations(): Promise<void> {
+  const [cfg, compatCfg, latestReport] = await Promise.all([
+    prisma.appConfig.findUnique({ where: { id: 'default' } }),
+    mailWizzCapabilityRegistry.loadCompatibilityConfig(),
+    mailWizzCapabilityRegistry.loadLatestCompatibilityReport(),
+  ]);
+
+  if (latestReport && latestReport.connectionStatus !== 'NOT_CONFIGURED') {
+    if (latestReport.overallStatus === 'INCOMPATIBLE') {
+      throw new UnsafeOperationBlockedError(
+        'Remote MailWizz mutations blocked fail-closed: latest Compatibility Check reported INCOMPATIBLE contracts.'
+      );
+    }
+    if (!latestReport.mutationSafetyAllowed) {
+      throw new UnsafeOperationBlockedError(
+        latestReport.mutationLockReason ||
+          'Remote MailWizz mutations are locked until the connected version passes compatibility verification and administrator approval.'
+      );
+    }
+    return;
+  }
+
+  const detectedOrConfigured =
+    cfg?.mailwizzDetectedVersion ?? compatCfg.configuredVersion;
+  if (detectedOrConfigured) {
+    const versionInfo = mailWizzVersionDetector.resolveVersionInfo({
+      configuredVersion: compatCfg.configuredVersion,
+      detectedVersion: cfg?.mailwizzDetectedVersion ?? null,
+      approvedVersion: compatCfg.approvedVersion,
+    });
+    const resolved = mailWizzFutureAdapterResolver.resolve({
+      versionInfo,
+      envMutationsEnabled: isMailWizzMutationsEnabled(),
+      coreContractsPassed:
+        versionInfo.parsed.isBaseline305 ||
+        versionInfo.parsed.classification === 'PATCH_3_0_X'
+          ? true
+          : undefined,
+    });
+    if (!resolved.mutationSafetyAllowed) {
+      throw new UnsafeOperationBlockedError(
+        resolved.mutationLockReason ||
+          `Remote mutations blocked for MailWizz version "${detectedOrConfigured}" until compatibility verification passes.`
+      );
+    }
+  }
+}
 
 export async function createConfiguredMutationClient(): Promise<{
   client: MailWizzMutationClient;
   batchSize: number;
 }> {
+  await assertCompatibilityPermitsRemoteMutations();
+
   const env = getEnv();
   const cfg = await prisma.appConfig.upsert({
     where: { id: 'default' },

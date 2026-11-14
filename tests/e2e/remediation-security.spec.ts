@@ -99,6 +99,20 @@ test.describe('Phase 3.1 Security Boundaries, Workflows & Admin Protection E2E',
       page.getByText(/Invalid or internal\/private target hostname/i)
     ).toBeVisible({ timeout: 10000 });
 
+    // 9b. Compatibility page: verify nav, unverified admin version labeling, and read-only Compatibility Check
+    await page.getByRole('link', { name: 'Compatibility', exact: true }).click();
+    await expect(page).toHaveURL('/compatibility');
+    await expect(page.getByTestId('compatibility-verdict-banner')).toBeVisible();
+    await page.locator('#configured-version-input').fill('3.2.0-beta');
+    await page.getByRole('button', { name: /Save Configured Version \(UNVERIFIED\)/i }).click();
+    await expect(page.getByText(/3\.2\.0-beta \(UNVERIFIED\)/i)).toBeVisible({ timeout: 10000 });
+    await page.getByTestId('run-compatibility-check').click();
+    await expect(page.getByText(/Read-only compatibility verification completed/i)).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByTestId('capability-row-list_discovery')).toBeVisible();
+    await page.getByRole('button', { name: /Clear Admin Version/i }).click();
+
     // 10. Sign out revokes session and redirects to /login; protected API calls return 401 again
     await page.getByRole('button', { name: /Sign out/i }).click();
     await expect(page).toHaveURL(/\/login/);

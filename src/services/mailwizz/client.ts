@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { logger } from '@/services/security/logger';
 import {
   buildMailWizzAuthHeaders,
-  detectMailWizzVersionFromResponse,
   type MailWizzAuthMode,
 } from './compat';
+import { mailWizzVersionDetector } from './version-detector';
 import {
   MailWizzCampaignActivityRecordSchema,
   MailWizzCampaignBounceRecordSchema,
@@ -144,11 +144,14 @@ export class MailWizzClient {
     }
   }
 
-  async getJson<T extends z.ZodTypeAny>(
+  /**
+   * Executes a rate-limited, strictly read-only (`GET`) request and returns raw parsed JSON
+   * plus detected server version headers. Blocks all `/tracking/*` and mutation paths.
+   */
+  async getRawJson(
     path: string,
-    schema: T,
     query?: Record<string, string | number | undefined>
-  ): Promise<z.infer<T>> {
+  ): Promise<{ rawJson: unknown; headers: Headers }> {
     this.assertReadOnlySafeEndpoint(path, 'GET');
 
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -231,35 +234,14 @@ export class MailWizzClient {
         }
 
         const rawJson: unknown = await response.json();
-        const detectedVersion = detectMailWizzVersionFromResponse(response.headers, rawJson);
+        const detectedVersion = mailWizzVersionDetector.extractVersionFromHttpResponse(
+          response.headers,
+          rawJson
+        );
         if (detectedVersion) {
           this.detectedServerVersion = detectedVersion;
         }
-        const parsed = schema.safeParse(rawJson);
-        if (!parsed.success) {
-          throw new MailWizzApiError(
-            `Unexpected MailWizz API response shape at ${cleanPath}: ${parsed.error.issues[0]?.message ?? 'validation failed'}`,
-            {
-              statusCode: 502,
-              retryable: false,
-              endpoint: cleanPath,
-            }
-          );
-        }
-
-        const dataObj = parsed.data as { status?: string; error?: unknown };
-        if (dataObj.status === 'error') {
-          throw new MailWizzApiError(
-            `MailWizz API returned error at ${cleanPath}: ${String(dataObj.error ?? 'unknown error')}`,
-            {
-              statusCode: 400,
-              retryable: false,
-              endpoint: cleanPath,
-            }
-          );
-        }
-
-        return parsed.data;
+        return { rawJson, headers: response.headers };
       } catch (err) {
         clearTimeout(timeoutHandle);
         if (err instanceof ReadOnlyGuardError) {
@@ -295,6 +277,40 @@ export class MailWizzClient {
       retryable: true,
       endpoint: cleanPath,
     });
+  }
+
+  async getJson<T extends z.ZodTypeAny>(
+    path: string,
+    schema: T,
+    query?: Record<string, string | number | undefined>
+  ): Promise<z.infer<T>> {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const { rawJson } = await this.getRawJson(cleanPath, query);
+    const parsed = schema.safeParse(rawJson);
+    if (!parsed.success) {
+      throw new MailWizzApiError(
+        `Unexpected MailWizz API response shape at ${cleanPath}: ${parsed.error.issues[0]?.message ?? 'validation failed'}`,
+        {
+          statusCode: 502,
+          retryable: false,
+          endpoint: cleanPath,
+        }
+      );
+    }
+
+    const dataObj = parsed.data as { status?: string; error?: unknown };
+    if (dataObj.status === 'error') {
+      throw new MailWizzApiError(
+        `MailWizz API returned error at ${cleanPath}: ${String(dataObj.error ?? 'unknown error')}`,
+        {
+          statusCode: 400,
+          retryable: false,
+          endpoint: cleanPath,
+        }
+      );
+    }
+
+    return parsed.data;
   }
 
   async paginateAll<T extends z.ZodTypeAny>(

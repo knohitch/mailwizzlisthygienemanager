@@ -6,23 +6,14 @@ import { recomputeAllHygieneClassifications } from '@/services/analysis/classifi
 import { reconcileListsAndCampaigns } from '@/services/analysis/reconciliation';
 import { MailWizzClient } from './client';
 import type { MailWizzAuthMode } from './compat';
+import { mapStrictMailWizzSubscriberStatus } from './adapter-v3';
+import { mailWizzCapabilityRegistry } from './capability-registry';
 import {
   ensureCapabilityMatrixInitialized,
   updateCapabilityStatus,
 } from './capability-matrix';
 import { fetchEngagementEventsFromReportingDb } from './reporting-db';
-import type { EngagementEventType, Prisma, SubscriberStatus } from '@prisma/client';
-
-function mapMailWizzSubscriberStatus(raw: string | undefined): SubscriberStatus {
-  const s = (raw ?? '').trim().toLowerCase();
-  if (s === 'confirmed') return 'CONFIRMED';
-  if (s === 'unconfirmed') return 'UNCONFIRMED';
-  if (s === 'unsubscribed') return 'UNSUBSCRIBED';
-  if (s === 'blacklisted') return 'BLACKLISTED';
-  if (s === 'moved') return 'MOVED';
-  if (s === 'unapproved') return 'UNAPPROVED';
-  return 'UNKNOWN';
-}
+import type { EngagementEventType, Prisma } from '@prisma/client';
 
 function parseMailWizzDate(raw: string | null | undefined): Date | null {
   if (!raw) return null;
@@ -91,11 +82,19 @@ export interface SyncResultSummary {
 export async function runMailWizzSync(options?: {
   onlyListUid?: string;
   onProgress?: SyncProgressCallback;
+  client?: MailWizzClient;
 }): Promise<SyncResultSummary> {
   await ensureCapabilityMatrixInitialized();
 
-  const { client, batchSize, lookbackDays, reportingDbUri, reportingDbPrefix } =
-    await createConfiguredMailWizzClient();
+  const { client, batchSize, lookbackDays, reportingDbUri, reportingDbPrefix } = options?.client
+    ? {
+        client: options.client,
+        batchSize: 50,
+        lookbackDays: 90,
+        reportingDbUri: null,
+        reportingDbPrefix: 'mw_',
+      }
+    : await createConfiguredMailWizzClient();
 
   const reportProgress = async (current: number, total: number, message: string) => {
     if (options?.onProgress) {
@@ -109,6 +108,7 @@ export async function runMailWizzSync(options?: {
   const listsRes = await client.getLists(batchSize);
   await updateCapabilityStatus('auth_x_api_key', 'VERIFIED');
   await updateCapabilityStatus('lists_discovery', 'VERIFIED');
+  await updateCapabilityStatus('list_discovery', 'VERIFIED');
 
   if (client.getDetectedServerVersion()) {
     await prisma.appConfig.update({
@@ -133,6 +133,7 @@ export async function runMailWizzSync(options?: {
   let campaignsSynced = 0;
   let bounceEventsRecorded = 0;
   let reportingDbEventsRecorded = 0;
+  const unknownStatusesObserved = new Set<string>();
 
   const listIdByUid = new Map<string, string>();
   const subscriberIdByUid = new Map<string, { id: string; mailingListId: string }>();
@@ -149,6 +150,8 @@ export async function runMailWizzSync(options?: {
 
     const subsRes = await client.getSubscribers(listUid, { perPage: batchSize });
     await updateCapabilityStatus('subscribers_paginated', 'VERIFIED');
+    await updateCapabilityStatus('subscriber_retrieval', 'VERIFIED');
+    await updateCapabilityStatus('subscriber_pagination', 'VERIFIED');
 
     const dbList = await prisma.mailingList.upsert({
       where: { listUid },
@@ -187,7 +190,11 @@ export async function runMailWizzSync(options?: {
       const email = (sub.EMAIL ?? sub.email ?? '').trim().toLowerCase();
       if (!email) continue;
 
-      const mappedStatus = mapMailWizzSubscriberStatus(sub.status);
+      const { status: mappedStatus, unknownStatusDetected } =
+        mapStrictMailWizzSubscriberStatus(sub.status);
+      if (unknownStatusDetected && sub.status) {
+        unknownStatusesObserved.add(sub.status);
+      }
       const savedSub = await prisma.subscriber.upsert({
         where: {
           mailingListId_subscriberUid: {
@@ -637,10 +644,26 @@ export async function runMailWizzSync(options?: {
     }
   }
 
-  // 5. Recompute hygiene classification & reconciliation
+  // Record strict subscriber status compatibility outcome
+  if (unknownStatusesObserved.size > 0) {
+    const unknownList = Array.from(unknownStatusesObserved).slice(0, 10).join(', ');
+    await updateCapabilityStatus(
+      'subscriber_status_retrieval',
+      'UNAVAILABLE',
+      `Detected unrecognized MailWizz subscriber statuses (${unknownList}); safely mapped to UNKNOWN without altering consent interpretation.`
+    );
+    logger.warn('Unrecognized MailWizz subscriber statuses detected during sync', {
+      statuses: unknownList,
+    });
+  } else if (subscribersSynced > 0) {
+    await updateCapabilityStatus('subscriber_status_retrieval', 'VERIFIED');
+  }
+
+  // Recompute hygiene classification & reconciliation (existing historical events preserved intact)
   await reportProgress(90, 100, 'Analyzing engagement classifications and reconciling totals...');
   const classification = await recomputeAllHygieneClassifications();
   await reconcileListsAndCampaigns();
+  await mailWizzCapabilityRegistry.loadCompatibilityConfig();
 
   await reportProgress(100, 100, 'Synchronization complete.');
 

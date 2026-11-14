@@ -9,6 +9,7 @@ import {
 } from '@/services/security/crypto';
 import { checkRateLimit, getClientIp } from '@/services/security/rate-limit';
 import { logger } from '@/services/security/logger';
+import { mailWizzV3Adapter } from '@/services/mailwizz/adapter-v3';
 import type { EngagementEventType } from '@prisma/client';
 
 const MAX_WEBHOOK_ITEMS = 500;
@@ -16,20 +17,8 @@ const MAX_WEBHOOK_BODY_BYTES = 512 * 1024;
 const MAX_WEBHOOK_AGE_MS = 7 * 86_400_000; // 7 days replay tolerance
 const MAX_WEBHOOK_FUTURE_SKEW_MS = 5 * 60_000; // 5 minutes clock skew
 
-function mapWebhookEventType(raw: string): EngagementEventType | null {
-  const s = raw.trim().toLowerCase();
-  if (s === 'open' || s === 'opened' || s === 'campaign_open') return 'OPEN';
-  if (s === 'click' || s === 'clicked' || s === 'url_click') return 'CLICK';
-  if (s === 'unsubscribe' || s === 'unsubscribed') return 'UNSUBSCRIBE';
-  if (s === 'hard_bounce' || s === 'bounce_hard') return 'HARD_BOUNCE';
-  if (s === 'soft_bounce' || s === 'bounce_soft' || s === 'bounce') return 'SOFT_BOUNCE';
-  if (s === 'complaint' || s === 'complained' || s === 'spam' || s === 'abuse') {
-    return 'COMPLAINT';
-  }
-  return null;
-}
-
 interface NormalizedWebhookItem {
+  eventType: EngagementEventType | null;
   eventTypeRaw: string;
   timestamp?: string | number;
   campaignUid: string;
@@ -43,51 +32,24 @@ function normalizeWebhookItems(body: unknown): NormalizedWebhookItem[] {
   if (list.length > MAX_WEBHOOK_ITEMS) {
     throw new Error(`Webhook batch exceeds limit of ${MAX_WEBHOOK_ITEMS} events.`);
   }
-  const out: NormalizedWebhookItem[] = [];
 
-  for (const item of list) {
-    if (!item || typeof item !== 'object') continue;
-    const obj = item as Record<string, unknown>;
-    const eventObj =
-      obj.event && typeof obj.event === 'object'
-        ? (obj.event as Record<string, unknown>)
-        : obj;
-    const campObj =
-      obj.campaign && typeof obj.campaign === 'object'
-        ? (obj.campaign as Record<string, unknown>)
-        : obj;
-    const subObj =
-      obj.subscriber && typeof obj.subscriber === 'object'
-        ? (obj.subscriber as Record<string, unknown>)
-        : obj;
-    const listObj =
-      obj.list && typeof obj.list === 'object'
-        ? (obj.list as Record<string, unknown>)
-        : obj;
-
-    const eventTypeRaw = String(eventObj.type ?? obj.event_type ?? obj.type ?? '').trim();
-    const campaignUid = String(
-      campObj.uid ?? campObj.campaign_uid ?? obj.campaign_uid ?? ''
-    ).trim();
-    const subscriberUid = String(
-      subObj.uid ?? subObj.subscriber_uid ?? obj.subscriber_uid ?? ''
-    ).trim();
-    const listUid = String(
-      listObj.list_uid ?? listObj.uid ?? obj.list_uid ?? subObj.list_uid ?? ''
-    ).trim() || undefined;
-    const eventId = String(
-      eventObj.id ?? eventObj.event_id ?? obj.event_id ?? ''
-    ).trim() || undefined;
-
-    const tsRaw = eventObj.timestamp ?? obj.timestamp ?? obj.date_added;
-    const timestamp =
-      typeof tsRaw === 'string' || typeof tsRaw === 'number' ? tsRaw : undefined;
-
-    if (eventTypeRaw && campaignUid && subscriberUid) {
-      out.push({ eventTypeRaw, timestamp, campaignUid, subscriberUid, listUid, eventId });
-    }
+  const parsed = mailWizzV3Adapter.normalizeWebhookPayload(body);
+  if (parsed.issues.length > 0) {
+    logger.warn('MailWizz webhook contract warnings/errors', {
+      issueCount: parsed.issues.length,
+      codes: parsed.issues.slice(0, 5).map((i) => i.code),
+    });
   }
-  return out;
+
+  return parsed.events.map((e) => ({
+    eventType: e.eventType,
+    eventTypeRaw: e.rawEventType,
+    timestamp: e.timestamp,
+    campaignUid: e.campaignUid,
+    subscriberUid: e.subscriberUid,
+    listUid: e.listUid,
+    eventId: e.eventId,
+  }));
 }
 
 export async function POST(req: NextRequest) {
@@ -162,7 +124,7 @@ export async function POST(req: NextRequest) {
   const nowMs = Date.now();
 
   for (const item of items) {
-    const eventType = mapWebhookEventType(item.eventTypeRaw);
+    const eventType = item.eventType;
     if (!eventType) {
       ignoredCount++;
       continue;

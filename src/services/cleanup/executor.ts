@@ -5,9 +5,11 @@ import {
 } from '@/services/analysis/classifier';
 import { updateJobProgress } from '@/services/jobs/queue';
 import {
+  assertCompatibilityPermitsRemoteMutations,
   createConfiguredMutationClient,
   type MailWizzMutationClient,
 } from '@/services/mutations/gate';
+import { mapStrictMailWizzSubscriberStatus } from '@/services/mailwizz/adapter-v3';
 import { recordAuditLog } from '@/services/security/audit';
 import { logger } from '@/services/security/logger';
 import {
@@ -77,9 +79,12 @@ export async function executeCleanupOperation(params: {
     op.actionType === 'MOVE_SUBSCRIBERS';
 
   let client = params.mutationClient;
-  if (needsRemoteClient && !client) {
-    const configured = await createConfiguredMutationClient();
-    client = configured.client;
+  if (needsRemoteClient) {
+    await assertCompatibilityPermitsRemoteMutations();
+    if (!client) {
+      const configured = await createConfiguredMutationClient();
+      client = configured.client;
+    }
   }
 
   await prisma.cleanupOperation.update({
@@ -536,6 +541,14 @@ export async function executeCleanupOperation(params: {
             );
           }
           const remoteStatus = remoteRecord?.status?.toLowerCase();
+          if (remoteStatus) {
+            const mappedRemote = mapStrictMailWizzSubscriberStatus(remoteStatus);
+            if (mappedRemote.unknownStatusDetected) {
+              throw new Error(
+                `Unknown remote MailWizz subscriber status "${remoteStatus}" — refusing to assume consent or unsubscribe.`
+              );
+            }
+          }
 
           if (remoteStatus && remoteStatus !== 'confirmed') {
             await prisma.subscriber.update({

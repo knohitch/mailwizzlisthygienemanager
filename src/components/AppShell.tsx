@@ -8,6 +8,7 @@ import {
   BarChart3,
   Filter,
   FlaskConical,
+  GitCompareArrows,
   Globe,
   LayoutDashboard,
   LogOut,
@@ -58,7 +59,7 @@ export function AppShell({
                   MailWizz List Hygiene Manager
                 </div>
                 <div className="text-xs text-slate-500">
-                  MailWizz 3.0.5 • DirectMail Deliverability Console
+                  MailWizz 3.0.5+ Compatible • DirectMail Console
                 </div>
               </div>
             </Link>
@@ -137,6 +138,18 @@ export function AppShell({
             >
               <Globe className="h-4 w-4" />
               Deliverability
+            </Link>
+            <Link
+              href="/compatibility"
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                pathname.startsWith('/compatibility')
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:bg-slate-100'
+              )}
+            >
+              <GitCompareArrows className="h-4 w-4" />
+              Compatibility
             </Link>
             <Link
               href="/settings"

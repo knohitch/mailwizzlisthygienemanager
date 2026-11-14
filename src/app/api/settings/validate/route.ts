@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
       apiResult.message
     );
     await updateCapabilityStatus('lists_discovery', 'VERIFIED');
+    await updateCapabilityStatus('list_discovery', 'VERIFIED');
 
     let reportingDbResult = null;
     if (reportingDbUri) {
