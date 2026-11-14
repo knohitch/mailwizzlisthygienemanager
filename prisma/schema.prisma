@@ -1,0 +1,700 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SubscriberStatus {
+  CONFIRMED
+  UNCONFIRMED
+  UNSUBSCRIBED
+  BLACKLISTED
+  MOVED
+  UNAPPROVED
+  UNKNOWN
+}
+
+enum HygieneStatus {
+  ENGAGED_STRONG
+  ENGAGED_OPEN_ONLY
+  INACTIVE_CANDIDATE
+  INSUFFICIENT_HISTORY
+  UNKNOWN
+  HARD_BOUNCED
+  COMPLAINED
+  UNSUBSCRIBED
+  UNCONFIRMED
+  BLACKLISTED
+  EXCLUDED
+}
+
+enum HistoryCoverage {
+  VERIFIED_FULL
+  PARTIAL_EXPORTS_OR_WEBHOOKS
+  BOUNCE_ONLY
+  NONE
+}
+
+enum EngagementEventType {
+  DELIVERED
+  OPEN
+  CLICK
+  REPLY
+  CONVERSION
+  HARD_BOUNCE
+  SOFT_BOUNCE
+  INTERNAL_BOUNCE
+  COMPLAINT
+  UNSUBSCRIBE
+}
+
+enum EventSource {
+  API_BOUNCE_LOG
+  API_ACTIVITY_LOG
+  NATIVE_SEGMENT
+  VERIFIED_EXPORT
+  READONLY_REPORTING_DB
+  WEBHOOK_LIVE
+  SYNTHETIC_DEMO
+}
+
+enum JobType {
+  FULL_SYNC
+  LIST_SYNC
+  ANALYZE_HYGIENE
+  RETENTION_CLEANUP
+  HYGIENE_EXECUTION
+  SUPPRESSION_RESTORE
+  REENGAGEMENT_EVALUATION
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum EngagementClass {
+  ACTIVE
+  COOLING
+  INACTIVE
+  LONG_TERM_INACTIVE
+  NEVER_ENGAGED
+  INSUFFICIENT_DATA
+  EXCLUDED
+}
+
+enum EngagementConfidence {
+  HIGH
+  MEDIUM
+  LOW
+  NONE
+}
+
+enum CleanupActionType {
+  SUPPRESS
+  UNSUBSCRIBE
+  CREATE_LIST
+  CREATE_SEGMENT
+  COPY_SUBSCRIBERS
+  MOVE_SUBSCRIBERS
+  ARCHIVE
+  RESTORE_SUPPRESSION
+}
+
+enum CleanupOperationStatus {
+  DRY_RUN_READY
+  CONFIRMED
+  RUNNING
+  PAUSED
+  COMPLETED
+  AUTO_STOPPED
+  FAILED
+  CANCELLED
+}
+
+enum CleanupRecordOutcome {
+  PENDING
+  SKIPPED
+  SUCCEEDED
+  FAILED
+  RECONCILED
+}
+
+enum ReengagementStatus {
+  DRAFT
+  SEGMENT_CREATED
+  AWAITING_RESPONSE
+  EVALUATED
+  COMPLETED
+  CANCELLED
+}
+
+enum CapabilityStatus {
+  VERIFIED
+  UNAVAILABLE
+  NOT_YET_TESTED
+}
+
+enum ReconciliationStatus {
+  MATCHED
+  DISCREPANCY
+  UNVERIFIED
+}
+
+enum DnsCheckStatus {
+  PASS
+  WARN
+  FAIL
+  UNKNOWN
+}
+
+enum MailboxProvider {
+  GMAIL
+  OUTLOOK
+  YAHOO
+  OTHER
+}
+
+enum PlacementLocation {
+  PRIMARY
+  PROMOTIONS
+  OTHER
+  SPAM
+  MISSING
+}
+
+enum DirectMailSource {
+  ALIBABA_API
+  ALIBABA_CSV_IMPORT
+  SYNTHETIC_DEMO
+}
+
+model AdminSession {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  csrfSecret String
+  adminEmail String
+  ipAddress  String?
+  userAgent  String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
+model AppConfig {
+  id                           String    @id @default("default")
+  mailwizzApiUrl               String?
+  mailwizzApiKeyEnc            String?
+  mailwizzApiKeyLast4          String?
+  mailwizzAuthMode             String    @default("auto")
+  mailwizzDetectedVersion      String?
+  reportingDbUrlEnc            String?
+  reportingDbPrefix            String    @default("mw_")
+  webhookSecretEnc             String?
+  alibabaAccessKeyIdEnc        String?
+  alibabaAccessKeySecretEnc    String?
+  alibabaKeyLast4              String?
+  alibabaRegion                String    @default("ap-southeast-1")
+  alibabaAccountStatus         String?
+  alibabaLastSyncedAt          DateTime?
+  googlePostmasterTokenEnc     String?
+  googlePostmasterDomain       String?
+  lookbackDays                 Int       @default(90)
+  coolingDays                  Int       @default(60)
+  inactiveDays                 Int       @default(90)
+  longTermInactiveDays         Int       @default(180)
+  customRangeStart             DateTime?
+  customRangeEnd               DateTime?
+  minDeliveredCampaigns        Int       @default(5)
+  countOpensAsEngaged          Boolean   @default(true)
+  countClicksAsEngaged         Boolean   @default(true)
+  countRepliesAsEngaged        Boolean   @default(true)
+  countConversionsAsEngaged    Boolean   @default(true)
+  excludedDomainsJson          Json      @default("[]")
+  excludedSourcesJson          Json      @default("[]")
+  excludeRecentSubscribersDays Int       @default(14)
+  largeChangeThreshold         Int       @default(100)
+  reengagementWindowDays       Int       @default(14)
+  maxApiRequestsPerSecond      Int       @default(5)
+  batchSize                    Int       @default(50)
+  syncScheduleCron             String    @default("0 2 * * *")
+  syncScheduleEnabled          Boolean   @default(false)
+  timezone                     String    @default("UTC")
+  reportingPeriodDays          Int       @default(90)
+  dataRetentionDays            Int       @default(365)
+  isDemoMode                   Boolean   @default(false)
+  lastValidatedAt              DateTime?
+  lastValidationStatus         String?
+  lastValidationMessage        String?
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+}
+
+model MailingList {
+  id                    String               @id @default(cuid())
+  listUid               String               @unique
+  name                  String
+  displayName           String?
+  description           String?
+  fromName              String?
+  fromEmail             String?
+  replyTo               String?
+  optIn                 String?
+  optOut                String?
+  apiReportedCount      Int?
+  syncedSubscriberCount Int                  @default(0)
+  confirmedCount        Int                  @default(0)
+  unconfirmedCount      Int                  @default(0)
+  unsubscribedCount     Int                  @default(0)
+  blacklistedCount      Int                  @default(0)
+  hardBouncedCount      Int                  @default(0)
+  complaintCount        Int                  @default(0)
+  reconciliationStatus  ReconciliationStatus @default(UNVERIFIED)
+  reconciliationNote    String?
+  isDemoData            Boolean              @default(false)
+  lastSyncedAt          DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  subscribers       Subscriber[]
+  segments          ListSegment[]
+  campaigns         Campaign[]
+  engagementEvents  EngagementEvent[]
+  cleanupOperations CleanupOperation[]
+  reengagementPlans ReengagementPlan[]
+}
+
+model ListSegment {
+  id                     String   @id @default(cuid())
+  mailingListId          String
+  segmentUid             String
+  name                   String
+  operatorMatch          String?
+  apiSubscribersCount    Int?
+  conditionsJson         Json     @default("[]")
+  campaignConditionsJson Json     @default("[]")
+  isDemoData             Boolean  @default(false)
+  lastSyncedAt           DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  mailingList MailingList         @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+  memberships SegmentMembership[]
+
+  @@unique([mailingListId, segmentUid])
+}
+
+model SegmentMembership {
+  id           String   @id @default(cuid())
+  segmentId    String
+  subscriberId String
+  createdAt    DateTime @default(now())
+
+  segment    ListSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  subscriber Subscriber  @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@unique([segmentId, subscriberId])
+}
+
+model Subscriber {
+  id                     String           @id @default(cuid())
+  mailingListId          String
+  subscriberUid          String
+  email                  String
+  emailHash              String
+  firstName              String?
+  lastName               String?
+  status                 SubscriberStatus @default(UNKNOWN)
+  rawStatus              String
+  source                 String?
+  customFieldsJson       Json?
+  dateAddedMailwizz      DateTime?
+  isExcluded             Boolean          @default(false)
+  exclusionReason        String?
+  hygieneStatus           HygieneStatus        @default(UNKNOWN)
+  hygieneReason           String?
+  engagementStatus        EngagementClass      @default(INSUFFICIENT_DATA)
+  engagementReason        String?
+  descriptiveTagsJson     Json                 @default("[]")
+  engagementConfidence    EngagementConfidence @default(NONE)
+  historyCoverage         HistoryCoverage      @default(NONE)
+  deliveredCampaignsCount Int                  @default(0)
+  opensCount              Int                  @default(0)
+  clicksCount             Int                  @default(0)
+  repliesCount            Int                  @default(0)
+  conversionsCount        Int                  @default(0)
+  hardBouncesCount        Int                  @default(0)
+  softBouncesCount        Int                  @default(0)
+  complaintsCount         Int                  @default(0)
+  lastDeliveredAt         DateTime?
+  lastOpenAt              DateTime?
+  lastClickAt             DateTime?
+  lastReplyAt             DateTime?
+  lastConversionAt        DateTime?
+  lastPurchaseAt          DateTime?
+  lastStrongEngagementAt  DateTime?
+  lastBounceAt            DateTime?
+  isSuppressed            Boolean              @default(false)
+  suppressionReason       String?
+  suppressedAt            DateTime?
+  isArchived              Boolean              @default(false)
+  archivedAt              DateTime?
+  archiveReason           String?
+  isVip                   Boolean              @default(false)
+  hasPaidRelationship     Boolean              @default(false)
+  protectionNote          String?
+  isDemoData              Boolean              @default(false)
+  lastSyncedAt            DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  mailingList        MailingList              @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+  engagementEvents   EngagementEvent[]
+  segmentMemberships SegmentMembership[]
+  cleanupRecords     CleanupOperationRecord[]
+
+  @@unique([mailingListId, subscriberUid])
+  @@index([mailingListId, hygieneStatus])
+  @@index([mailingListId, engagementStatus])
+  @@index([mailingListId, isSuppressed])
+  @@index([mailingListId, status])
+  @@index([email])
+  @@index([emailHash])
+}
+
+model Campaign {
+  id                       String               @id @default(cuid())
+  campaignUid              String               @unique
+  campaignIdMailwizz       String?
+  mailingListId            String?
+  listUid                  String?
+  segmentUid               String?
+  name                     String
+  subject                  String?
+  type                     String?
+  status                   String
+  sendAt                   DateTime?
+  dateAddedMailwizz        DateTime?
+  subscribersCount         Int                  @default(0)
+  processedCount           Int                  @default(0)
+  deliverySuccessCount     Int                  @default(0)
+  deliverySuccessRate      Float                @default(0)
+  deliveryErrorCount       Int                  @default(0)
+  deliveryErrorRate        Float                @default(0)
+  opensCount               Int                  @default(0)
+  opensRate                Float                @default(0)
+  uniqueOpensCount         Int                  @default(0)
+  uniqueOpensRate          Float                @default(0)
+  clicksCount              Int                  @default(0)
+  clicksRate               Float                @default(0)
+  uniqueClicksCount        Int                  @default(0)
+  uniqueClicksRate         Float                @default(0)
+  unsubscribesCount        Int                  @default(0)
+  unsubscribesRate         Float                @default(0)
+  complaintsCount          Int                  @default(0)
+  complaintsRate           Float                @default(0)
+  bouncesCount             Int                  @default(0)
+  bouncesRate              Float                @default(0)
+  hardBouncesCount         Int                  @default(0)
+  hardBouncesRate          Float                @default(0)
+  softBouncesCount         Int                  @default(0)
+  softBouncesRate          Float                @default(0)
+  internalBouncesCount     Int                  @default(0)
+  internalBouncesRate      Float                @default(0)
+  bounceRecordsSyncedCount Int                  @default(0)
+  reconciliationStatus     ReconciliationStatus @default(UNVERIFIED)
+  reconciliationNote       String?
+  isDemoData               Boolean              @default(false)
+  lastSyncedAt             DateTime?
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+
+  mailingList      MailingList?      @relation(fields: [mailingListId], references: [id], onDelete: SetNull)
+  engagementEvents EngagementEvent[]
+
+  @@index([mailingListId, sendAt])
+  @@index([status])
+}
+
+model EngagementEvent {
+  id            String              @id @default(cuid())
+  subscriberId  String
+  campaignId    String?
+  mailingListId String
+  eventType     EngagementEventType
+  source        EventSource
+  occurredAt    DateTime
+  isHistorical  Boolean             @default(true)
+  isDemoData    Boolean             @default(false)
+  metadataJson  Json?
+  dedupeKey     String              @unique
+  createdAt     DateTime            @default(now())
+
+  subscriber  Subscriber  @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  campaign    Campaign?   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  mailingList MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+
+  @@index([subscriberId, eventType, occurredAt])
+  @@index([campaignId, eventType])
+  @@index([mailingListId, occurredAt])
+  @@index([source])
+}
+
+model SyncJob {
+  id              String    @id @default(cuid())
+  type            JobType
+  status          JobStatus @default(PENDING)
+  payloadJson     Json      @default("{}")
+  resultJson      Json?
+  progressCurrent Int       @default(0)
+  progressTotal   Int       @default(0)
+  progressMessage String?
+  attempts        Int       @default(0)
+  maxAttempts     Int       @default(3)
+  runAt           DateTime  @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  heartbeatAt     DateTime?
+  lockedBy        String?
+  pauseRequested  Boolean   @default(false)
+  cancelRequested Boolean   @default(false)
+  lastError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status, runAt])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorEmail   String
+  action       String
+  resourceType String
+  resourceId   String?
+  outcome      String
+  ipAddress    String?
+  detailsJson  Json     @default("{}")
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+}
+
+model ApiCapabilityCheck {
+  id                String           @id @default(cuid())
+  capabilityKey     String           @unique
+  category          String
+  endpointOrFeature String
+  status            CapabilityStatus
+  notes             String
+  checkedAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model CleanupOperation {
+  id                        String                 @id @default(cuid())
+  operationKey              String                 @unique
+  actionType                CleanupActionType
+  mailingListId             String?
+  targetListUid             String?
+  targetListName            String?
+  targetSegmentUid          String?
+  targetSegmentName         String?
+  dryRunOnly                Boolean                @default(true)
+  filterSpecJson            Json                   @default("{}")
+  ruleConfigSnapshotJson    Json                   @default("{}")
+  matchedCount              Int                    @default(0)
+  eligibleCount             Int                    @default(0)
+  excludedCount             Int                    @default(0)
+  dryRunReportJson          Json                   @default("{}")
+  snapshotEnc               String?
+  snapshotSha256            String?
+  confirmedByEmail          String?
+  confirmedListName         String?
+  confirmedCount            Int?
+  largeBatchApprovedBy      String?
+  confirmedAt               DateTime?
+  status                    CleanupOperationStatus @default(DRY_RUN_READY)
+  syncJobId                 String?
+  batchSize                 Int                    @default(25)
+  checkpointIndex           Int                    @default(0)
+  succeededCount            Int                    @default(0)
+  skippedCount              Int                    @default(0)
+  failedCount               Int                    @default(0)
+  reconciledCount           Int                    @default(0)
+  autoStopReason            String?
+  reconciliationSummaryJson Json?
+  beforeSnapshotJson        Json?
+  afterSnapshotJson         Json?
+  createdByEmail            String
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
+  completedAt               DateTime?
+
+  mailingList MailingList?             @relation(fields: [mailingListId], references: [id], onDelete: SetNull)
+  records     CleanupOperationRecord[]
+
+  @@index([status, createdAt])
+  @@index([mailingListId])
+}
+
+model CleanupOperationRecord {
+  id                 String               @id @default(cuid())
+  operationId        String
+  idempotencyKey     String               @unique
+  subscriberId       String?
+  subscriberUid      String
+  mailingListUid     String
+  emailHash          String
+  maskedEmail        String
+  previousStatus     SubscriberStatus
+  previousSuppressed Boolean              @default(false)
+  previousEngagement EngagementClass
+  intendedAction     CleanupActionType
+  outcome            CleanupRecordOutcome @default(PENDING)
+  attemptCount       Int                  @default(0)
+  remoteStatusBefore String?
+  remoteStatusAfter  String?
+  reason             String?
+  errorMessage       String?
+  processedAt        DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  operation  CleanupOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  subscriber Subscriber?      @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+
+  @@index([operationId, outcome])
+  @@index([subscriberId])
+}
+
+model ReengagementPlan {
+  id                        String             @id @default(cuid())
+  name                      String
+  mailingListId             String
+  filterSpecJson            Json               @default("{}")
+  eligibleCount             Int                @default(0)
+  excludedCount             Int                @default(0)
+  segmentUid                String?
+  suggestedSubject          String
+  suggestedPreviewText      String?
+  suggestedBodyMarkdown     String
+  mailwizzCampaignUid       String?
+  manualCampaignApproved    Boolean            @default(false)
+  approvedByEmail           String?
+  approvedAt                DateTime?
+  responseWindowDays        Int                @default(14)
+  windowStartedAt           DateTime?
+  windowEndsAt              DateTime?
+  status                    ReengagementStatus @default(DRAFT)
+  recoveredCount            Int                @default(0)
+  persistentlyInactiveCount Int                @default(0)
+  suppressedOperationId     String?
+  evaluationSummaryJson     Json?
+  createdByEmail            String
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
+
+  mailingList MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+
+  @@index([mailingListId, status])
+}
+
+model DomainAuthCheck {
+  id                  String         @id @default(cuid())
+  domain              String
+  fromDomain          String?
+  trackingDomain      String?
+  dkimSelector        String?
+  spfStatus           DnsCheckStatus @default(UNKNOWN)
+  spfRecord           String?
+  spfDetail           String
+  dkimStatus          DnsCheckStatus @default(UNKNOWN)
+  dkimRecord          String?
+  dkimDetail          String
+  dmarcStatus         DnsCheckStatus @default(UNKNOWN)
+  dmarcPolicy         String?
+  dmarcAlignmentOk    Boolean?
+  dmarcRecord         String?
+  dmarcDetail         String
+  mxStatus            DnsCheckStatus @default(UNKNOWN)
+  mxRecordsJson       Json           @default("[]")
+  trackingStatus      DnsCheckStatus @default(UNKNOWN)
+  trackingDetail      String
+  recommendationsJson Json           @default("[]")
+  checkedByEmail      String
+  checkedAt           DateTime       @default(now())
+
+  @@index([domain, checkedAt])
+}
+
+model DirectMailDailyMetric {
+  id                  String           @id @default(cuid())
+  metricDate          DateTime
+  domainName          String           @default("all")
+  source              DirectMailSource
+  requestsCount       Int              @default(0)
+  deliveredCount      Int              @default(0)
+  failedCount         Int              @default(0)
+  invalidAddressCount Int              @default(0)
+  complaintCount      Int?
+  accountStatus       String?
+  notes               String?
+  rawPayloadJson      Json?
+  isDemoData          Boolean          @default(false)
+  importedAt          DateTime         @default(now())
+
+  @@unique([metricDate, domainName, source])
+  @@index([metricDate])
+}
+
+model InboxPlacementTest {
+  id                   String            @id @default(cuid())
+  testDomain           String
+  sendingProvider      String            @default("Alibaba Cloud DirectMail (SMTP)")
+  campaignUid          String?
+  recipientProvider    MailboxProvider
+  customProviderName   String?
+  testedAt             DateTime
+  placement            PlacementLocation
+  spfPass              Boolean?
+  dkimPass             Boolean?
+  dmarcPass            Boolean?
+  postmasterReputation String?
+  notes                String?
+  recordedByEmail      String
+  isDemoData           Boolean           @default(false)
+  createdAt            DateTime          @default(now())
+
+  @@index([testedAt])
+  @@index([recipientProvider])
+}
+
+model PostmasterStat {
+  id                     String   @id @default(cuid())
+  domain                 String
+  statDate               DateTime
+  domainReputation       String?
+  userReportedSpamRatio  Float?
+  dkimSuccessRatio       Float?
+  dmarcSuccessRatio      Float?
+  spfSuccessRatio        Float?
+  inboundEncryptionRatio Float?
+  source                 String   @default("MANUAL_ENTRY")
+  notes                  String?
+  isDemoData             Boolean  @default(false)
+  createdAt              DateTime @default(now())
+
+  @@unique([domain, statDate, source])
+  @@index([statDate])
+}

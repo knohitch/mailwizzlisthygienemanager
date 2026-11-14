@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+
+# Environment & Secrets (NEVER commit real credentials)
+.env
+.env.local
+.env.*.local
+
+# Testing & Artifacts
+coverage/
+playwright-report/
+test-results/
+tsconfig.tsbuildinfo
+backups/
+
+# OS & Logs
+.DS_Store
+*.log
+npm-debug.log*
