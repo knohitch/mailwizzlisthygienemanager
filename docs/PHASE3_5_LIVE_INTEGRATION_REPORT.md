@@ -1,121 +1,102 @@
-# Phase 3.5 — Live MailWizz 3.0.5 Integration & Data Protection Report
+# Phase 3.5 — Live MailWizz 3.0.5 Integration & Subscriber Analysis Report
 
-- **Date (UTC):** `2026-11-15T03:07:00Z`
+- **Date (UTC):** `2026-11-15T03:14:00Z`
 - **Repository Branch:** `validation/phase-3.4-docker-acceptance`
-- **Base Commit Reconciled:** `3b1e878d9624b6a50f1bef8843505aed2d71bf1a` (`3b1e878`)
+- **Inspected Commit:** `f07985319f3a82c3fa223061f4dc93221bc4d3cd` (`f079853`)
 - **Isolated Runtime Host:** `cloud-vps` (`100.95.86.56`), Compose project `mw-hygiene-p35-isolated`, directory `/srv/mw-hygiene-p35-isolated`, bound exclusively to `http://127.0.0.1:13000`
-- **Decision Verdict:** **NO-GO** for subscriber cleanup review (blocked pending read-only live MailWizz 3.0.5 credentials, historical engagement source, Alibaba DirectMail read-only credentials, and sending domain hostnames)
+- **Decision Verdict:** **NO-GO** for subscriber import or cleanup review — stopped cleanly at Section 1 (`age` AEAD backup & off-VPS recovery key not yet installed/confirmed on `cloud-vps`) and Section 3 (explicit live connection authorization and MailWizz 3.0.5 API credentials not yet provided).
 
 ---
 
-## 1. Deployed Application Identity Verification
+## 1. Backup Protection Validation (Pre-Import Gate)
 
-Comparison between local branch `validation/phase-3.4-docker-acceptance` (commit `3b1e878`) and `/srv/mw-hygiene-p35-isolated` on `cloud-vps`:
+### 1.1 Review of Prior Implementation
+Review of commit `f079853`'s `scripts/backup-postgres.sh` / `scripts/restore-postgres.sh` identified two pre-import confidentiality/recoverability gaps:
+1. **Unauthenticated cipher mode:** `openssl enc -aes-256-cbc -pbkdf2` provides confidentiality only (no AEAD integrity/authentication tag; `.sha256` sidecar files are not cryptographic AEAD).
+2. **Co-located fallback secret:** Because `BACKUP_ENCRYPTION_KEY` was `UNSET` in `.env`, the script fell back to `APP_ENCRYPTION_KEY` stored on the same VPS, coupling PostgreSQL backup decryption to the application secret file.
 
-- **Matched prior to script update (SHA-256 verified):**
-  - `Dockerfile` (`3ee165ff222e518e594b17d1dabe1a5bb2b15d8b7e77aa9ca991111bf1383cd7`)
-  - `docker-compose.yml` (`73d605f841a81a29bcad4354987c174f66fc54e49b6692de6657341edc2173ca`)
-  - `scripts/docker-smoke.sh` (`dc7e198f741dd5ebebc5537887bfee6980b3139c4583c5037fb565c4b37ebe09`)
-- **Synchronized during this validation pass:**
-  - `scripts/backup-postgres.sh` (hardened for mandatory AES-256-CBC PBKDF2 encryption and `shred -u` retention)
-  - `scripts/restore-postgres.sh` (hardened to require `.dump.enc` + SHA-256 verification and decrypt into `pg_restore`)
-  - `.gitattributes`
-  - `docs/PHASE3_5_LINUX_RUNTIME_VALIDATION.md`
-  - All transferred shell scripts normalized to LF endings and permissions set to `0755`.
-- **Host-only runtime files intentionally kept on `cloud-vps`:**
-  - `.env` (`chmod 0600`, isolated credentials, never committed)
-  - `docker-compose.isolated.yml` (adds `cpus`, `pids_limit: 256`, and `json-file` log rotation per container)
-- **Container & Host Runtime Status:**
-  - `mw-hygiene-p35-isolated-web-1`: `Up ... (healthy)` (`127.0.0.1:13000->3000/tcp`)
-  - `mw-hygiene-p35-isolated-worker-1`: `Up ... (healthy)`
-  - `mw-hygiene-p35-isolated-postgres-1` (`postgres:16-alpine`): `Up ... (healthy)` (`5432/tcp` internal only)
-  - Existing CapRover workloads (`captain-nginx`, `captain-captain`, `captain-certbot`, and all app/database containers) remained running without disruption.
+### 1.2 Hardening Applied (`age` Authenticated Encryption + Off-VPS Recovery Key)
+Updated the repository and host scripts without modifying runtime containers:
+- [scripts/backup-postgres.sh](scripts/backup-postgres.sh): Requires `age` AEAD (`age -r "$BACKUP_AGE_RECIPIENT" -o ...`) writing `./backups/hygiene_db_<UTC>.dump.age` + `.sha256` under `umask 077` (`0600`), streams `pg_dump -F c` directly to `age` so zero temporary plaintext `.dump` files touch disk, removes fallback to `APP_ENCRYPTION_KEY`, and enforces `BACKUP_RETENTION_DAYS` (default `14`) with `shred -u`.
+- [scripts/restore-postgres.sh](scripts/restore-postgres.sh): Requires `age`, checksum verification (`.sha256`), and an explicit off-VPS private recovery identity (`BACKUP_AGE_IDENTITY_FILE` or positional argument 2) supplied only at restore time; retains explicit `BACKUP_ENCRYPTION_KEY` path for legacy `.dump.enc` archives and refuses unencrypted `.dump` inputs.
+- [.env.example](.env.example) & [docs/DEPLOYMENT_AND_OPERATING_MANUAL.md](DEPLOYMENT_AND_OPERATING_MANUAL.md): Documented dedicated off-VPS `age-keygen` workflow, `BACKUP_AGE_RECIPIENT`, `14`-day `shred -u` retention, and non-VPS recovery procedures.
+
+### 1.3 Preservation & Blocking Status on `cloud-vps`
+- Existing encrypted backup `backups/hygiene_db_20261115T030608Z.dump.enc` (`74,016` bytes, `-rw-------`) and `.sha256` (`113` bytes, `-rw-------`) remain **untouched**. No plaintext `.dump` files exist in `backups/`.
+- `age v1.3.2` is present locally on the operator workstation, whereas on `cloud-vps`:
+  - `age` / `age-keygen`: **Not installed** (apt candidate `age 1.1.1-1ubuntu0.24.04.3` is available).
+  - `BACKUP_AGE_RECIPIENT`: **UNSET** (`BACKUP_ENCRYPTION_KEY: UNSET`).
+  - Fail-closed verification on `cloud-vps`: `./scripts/backup-postgres.sh` exits immediately with `Error: 'age' is required for authenticated backup encryption (https://age-encryption.org).`
+- **Section 1 Gate Status:** **BLOCKED** pending operator authorization to install `age` on `cloud-vps`, confirmation of an external off-VPS `age` private recovery key, setting `BACKUP_AGE_RECIPIENT` in `.env`, and a verified `.dump.age` restore test against `mw-hygiene-p35-isolated`.
 
 ---
 
-## 2. Read-Only Connection Results
+## 2. Deployed Application Version & Provenance
 
-All live external connections stopped cleanly before querying any external systems because required read-only credentials have not yet been supplied in `.env` or runtime configuration:
+LF-normalized SHA-256 digests of `/srv/mw-hygiene-p35-isolated` match local commit `f07985319f3a82c3fa223061f4dc93221bc4d3cd` (`validation/phase-3.4-docker-acceptance`):
 
-| Integration Target | Runtime Env Status | Connection Result |
+| Component / Tree | Count / Scope | Verified LF SHA-256 / Prefix (Local `f079853` === `cloud-vps`) |
 |---|---|---|
-| **MailWizz 3.0.5 API** (`MAILWIZZ_API_URL`, `MAILWIZZ_API_KEY`) | Unset (`hasMailwizzApiUrl=false`, `hasMailwizzApiKey=false`) | **Not Executed** — awaiting base URL + read-only API key |
-| **MailWizz Reporting MySQL / Historical CSV** (`MAILWIZZ_REPORTING_DB_URL` or export) | Unset (`hasReportingDbUrl=false`) | **Not Executed** — awaiting Priority C read-only MySQL replica/user or verified CSV campaign engagement exports |
-| **Alibaba Cloud DirectMail** (read-only RAM credentials) | Unset | **Not Executed** — awaiting read-only AccessKey pair + region |
-| **Sending / Tracking / From Domains** | Unset | **Not Executed** — awaiting exact sending, envelope/from, and tracking domain hostnames |
+| `src/` | 94 files | `2e02e8352aa0d633bb7cf720552b74a3b93a28179c724705158e5735f2e61602` |
+| `worker/` | 1 file | `46d0bb024fc1468574b416a3f6418160687b72dc0efbd89e9f16d41027b3341a` |
+| `prisma/` | 7 files | `5f07467a29c36fa67da8db1b050885f5200777c0a88ca380966f9a8b1a58ac46` |
+| `Dockerfile` | Web image build | `3ee165ff222e` |
+| `Dockerfile.worker` | Worker / migrate build | `7639e373b3b2` |
+| `docker-compose.yml` | Stack definition | `73d605f841a8` |
+| `package.json` / `package-lock.json` | Dependencies | `3f79992002f9` / `4ebdc9d4f954` |
+| `prisma/schema.prisma` | Schema | `6a23b26ad88b` |
+| `scripts/docker-smoke.sh` | Smoke check script | `dc7e198f741d` |
+
+### Running Container & Image IDs (`cloud-vps`)
+- `mw-hygiene-p35-isolated-web-1` (`917e6217dd52`, `Up ... (healthy)`, `127.0.0.1:13000->3000/tcp`): image `mw-hygiene-p35-isolated-web` (`sha256:b653b77e4c5201f41f209d1b94dae18b286bf23f52cf4d2a388775d4cdbfdf38`, created `2026-11-15T03:37:43+01:00`).
+- `mw-hygiene-p35-isolated-worker-1` (`8d1232667a8f`, `Up ... (healthy)`): image `mw-hygiene-p35-isolated-worker` (`sha256:e9681c17a3b161eb76889d08067f7023e653178e1228ad91238e4395a7f4cada`, created `2026-11-15T03:16:22+01:00`).
+- `mw-hygiene-p35-isolated-migrate-1` (`5910b1d16ccc`, `Exited (0)`): image `sha256:e9681c17a3b161eb76889d08067f7023e653178e1228ad91238e4395a7f4cada`; `_prisma_migrations` verified 4 applied migrations (`20261114164734_init`, `20261114170053_phase2_hygiene_engine`, `20261114171713_phase3_deliverability_diagnostics`, `20261114190323_mailwizz_multi_version_compat`).
+- `mw-hygiene-p35-isolated-postgres-1` (`9112a1c8fbef`, `Up ... (healthy)`, `5432/tcp` internal): `postgres:16-alpine` (`sha256:f377d590e5474681d4d7838635031a2b50647923b7abfa803ce9b5ff35d5c663`).
+- **Deployment Rebuild Impact:** Backup scripts (`scripts/*`), `.env.example`, and documentation (`docs/*`) are excluded from the runtime container layers of `Dockerfile` (`public`, `.next/standalone`, `.next/static`, `prisma`) and `Dockerfile.worker` (`package.json`, `tsconfig.json`, `prisma`, `src`, `worker`). **No container rebuild is required.** CapRover workloads remain untouched.
 
 ---
 
-## 3. Compatibility & Safety Lock Verification
+## 3. Live MailWizz Connection, Compatibility & Safety Lock
 
-Verified directly against `http://127.0.0.1:13000`:
+Read-only inspection of `/srv/mw-hygiene-p35-isolated/.env` and PostgreSQL `AppConfig` confirms:
+- `ENABLE_MAILWIZZ_MUTATIONS`: `false` (`GET /api/health` → `mailwizzMutationsEnabled: false`)
+- `MAILWIZZ_API_URL`: `UNSET` (`AppConfig.mailwizzApiUrl = <unset>`)
+- `MAILWIZZ_API_KEY`: `UNSET` (`AppConfig.mailwizzApiKeyEnc = NULL`)
+- `MAILWIZZ_REPORTING_DB_URL`: `UNSET` (`AppConfig.reportingDbUrlEnc = NULL`)
+- `mailwizzDetectedVersion`: `<unset>`
+- `GET /api/compatibility`: `overallStatus: "UNVERIFIED"`, `mutationSafetyAllowed: false`, `phase1ReadOnly: true`, `isDemoMode: false`, capability counts `{"VERIFIED":1,"AVAILABLE_BUT_UNTESTED":2,"BLOCKED":4,"UNKNOWN":8}`.
 
-- `GET /api/health` returned HTTP `200`:
-  ```json
-  {"status":"ok","database":"connected","worker":"healthy","phase":"phase-3-deliverability-ready","mailwizzMutationsEnabled":false,"timestamp":"2026-11-15T03:06:32.166Z"}
-  ```
-- `GET /api/settings` (authenticated) reported `phase1ReadOnly: true`, `isDemoMode: false`, `hasMailwizzApiKey: false`, `hasReportingDbUrl: false`, `hasWebhookSecret: false`.
-- `GET /api/compatibility` & `POST /api/compatibility` (`{"action":"RUN_CHECK"}`) reported:
-  - `overallStatus`: `"UNVERIFIED"`
-  - `mutationSafetyAllowed`: `false`
-  - `phase1ReadOnly`: `true`
-  - `capabilityCounts`: `{"VERIFIED":1,"AVAILABLE_BUT_UNTESTED":2,"BLOCKED":4,"UNKNOWN":8}`
-- `POST /api/cleanup/execute` with non-existent payload returned HTTP `400` (`{"error":"Cleanup operation not found."}`), and global `ENABLE_MAILWIZZ_MUTATIONS="false"` enforces read-only protection at the mutation gate.
+Live API validation against MailWizz 3.0.5 was **not executed** because credentials and explicit connection authorization have not been provided.
 
 ---
 
-## 4. Subscriber Data Protection Verification & Remediation
+## 4. Sample Ingestion, Target List Sync, Historical Engagement, & Deliverability
 
-### 4.1 Critical Gap Remediated — PostgreSQL Dump Encryption & Shredding
-- **Finding:** Prior smoke testing had left an unencrypted dump (`backups/hygiene_db_20261115T024110Z.dump`, `78,383` bytes) on disk via `scripts/backup-postgres.sh`.
-- **Remediation Applied:**
-  1. Permanently destroyed `backups/hygiene_db_20261115T024110Z.dump` and `.sha256` on `cloud-vps` using `shred -u`.
-  2. Hardened `scripts/backup-postgres.sh` to load `BACKUP_ENCRYPTION_KEY` or `APP_ENCRYPTION_KEY` (failing closed if `< 32` characters), stream `pg_dump -F c` directly into `openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt` so plaintext dumps never touch disk, apply `umask 077` (`0600`), write `.sha256`, and delete backups older than `BACKUP_RETENTION_DAYS` (default `14`) with `shred -u`.
-  3. Hardened `scripts/restore-postgres.sh` to refuse non-`.enc` dump filenames, verify `.sha256`, decrypt via `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000`, and stream into `pg_restore --clean --if-exists`.
-- **Live Test Verification (`cloud-vps`):**
-  - `./scripts/backup-postgres.sh` created `./backups/hygiene_db_20261115T030608Z.dump.enc` (`74,016` bytes, mode `-rw-------`, OpenSSL header `Salted__`) and `.dump.enc.sha256` (`-rw-------`).
-  - `./scripts/restore-postgres.sh /tmp/test_plain_refuse.dump` failed as required (`Error: Refusing unencrypted dump ... Only *.dump.enc encrypted backups are supported.`).
-  - `./scripts/restore-postgres.sh ./backups/hygiene_db_20261115T030608Z.dump.enc` verified `OK` checksum and completed cleanly against `mailwizz_hygiene_p35`.
+Zero synthetic or estimated metrics were substituted. All downstream analytical steps remain **Not Executed (Blocked)**:
 
-### 4.2 Access Control, Network Isolation, Logical Backups, & Redaction
-- **Authentication & CSRF:** Unauthenticated `GET /api/settings` returned HTTP `401`. Login (`POST /api/auth/login`) returned HTTP `200`, and `GET /api/auth/session` confirmed `authenticated: true` and `hasCsrf: true`.
-- **Network Binding:** Web container exposed solely on `127.0.0.1:13000`. PostgreSQL port `5432/tcp` has no host binding (`{"5432/tcp":null}`), is attached only to `mw-hygiene-p35-isolated_default`, and database `mailwizz_hygiene_p35` is owned exclusively by `hygiene_p35_user`.
-- **Tunnel-Only HTTP Note (`COOKIE_SECURE` / `ALLOWED_ADMIN_IPS`):** `COOKIE_SECURE="false"` and `ALLOWED_ADMIN_IPS` / `ALLOWED_ADMIN_CIDRS` remain unset for direct `http://127.0.0.1:13000` SSH-tunnel operation (note `src/lib/api-auth.ts` checks `getClientIp(req.headers)`). Before connecting behind any HTTPS reverse proxy, enable `COOKIE_SECURE=true` and configure `ALLOWED_ADMIN_IPS` / `ALLOWED_ADMIN_CIDRS`.
-- **Logical Backups & PII Log Safety:** `src/services/security/backup.ts` (`exportEncryptedAppBackup`) encrypts configuration/deliverability JSON bundles with `AES-256-GCM` (`src/services/security/crypto.ts`) without exporting subscriber PII. `src/services/security/logger.ts` (`sanitizeForLog` / `redactEmailString`) redacts credentials, emails, names, and IP fields, and `RETENTION_CLEANUP` (`src/services/jobs/handlers.ts`) purges old `AdminSession`, `EngagementEvent`, and finished `SyncJob` rows per `dataRetentionDays` (default `365`).
-- **Pre-Integration Database Cleanliness (`pg_stat_user_tables` after restore):**
-  - `MailingList=0`, `Subscriber=0`, `Campaign=0`, `EngagementEvent=0`, `DirectMailDailyMetric=0`, `DomainAuthCheck=0`, `InboxPlacementTest=0`, `PostmasterStat=0`, `ListSegment=0`, `SegmentMembership=0`, `ReengagementPlan=0`, `CleanupOperation=0`, `CleanupOperationRecord=0`.
-  - Operational metadata: `AppConfig=1`, `ApiCapabilityCheck=30`, `AdminSession=7`, `AuditLog=16`, `SyncJob=1`, `_prisma_migrations=4`.
+| Phase Step | Status | Reason / Dependency |
+|---|---|---|
+| 25-subscriber sample validation (pagination, IDs, status/email mapping, consent, activity, duplicates, errors) | **Not Executed** | Blocked by Section 1 (`age` + off-VPS key) and Section 3 (MailWizz 3.0.5 URL/API key + connection authorization) |
+| Target ~1,800-subscriber list sync & reconciliation | **Not Executed** | Requires passed 25-subscriber sample + explicit full-sync authorization |
+| Historical engagement analysis (30/60/90/180/365d, opens, clicks, bounces, complaints, campaign exposure) | **Not Executed** | Requires MailWizz API sync + historical exports (or separately approved `SELECT`-only MySQL account) |
+| Deliverability & DNS authentication (`SPF`, `DKIM`, `DMARC`, bounces, complaints, tracking audit) | **Not Executed** | Requires campaign telemetry + domain hostnames (`From:`, tracking domain, DKIM selector). Alibaba DirectMail remains an independent optional read-only feed and does not block MailWizz engagement analysis. |
+
+### Subscriber Health Report Placeholder (Zero Real Data Imported Yet)
+`MailingList=0`, `Subscriber=0`, `Campaign=0`, `EngagementEvent=0`, `DomainAuthCheck=0`, `DirectMailDailyMetric=0`. No list size, confirmed count, engaged/inactive breakdown, audience-reduction estimate, or re-engagement plan can be reported until verified live data is imported.
 
 ---
 
-## 5. Subscriber Reconciliation, Engagement Coverage, & Deliverability Results
+## 5. Exact Requirements Missing to Unblock Execution
 
-The following Steps (5–9 of Phase 3.5) were **not executed** because live read-only credentials and domain names are not yet configured, and no demo or estimated figures were substituted:
+To proceed cleanly from **NO-GO** into the 25-subscriber read-only sample and real ~1,800-subscriber analysis:
 
-- **Subscriber Reconciliation (~1,800-subscriber list & all other lists):** **Not Executed** (pending MailWizz 3.0.5 API credentials).
-- **Engagement History Coverage & Tracking Audit (Priority A/B/C):** **Not Executed** (pending MailWizz API + Priority C Reporting MySQL/CSV exports).
-- **Alibaba Cloud DirectMail Delivery & Bounce Diagnostics:** **Not Executed** (pending Alibaba DirectMail read-only RAM credentials & region).
-- **DNS Authentication Checks (`SPF`, `DKIM`, `DMARC`, `MX`, tracking CNAME):** **Not Executed** (pending sending/from/tracking hostnames).
-- **Engaged / Cooling / Inactive Classification Output:** **Not Executed** (0 subscribers ingested).
-
----
-
-## 6. Required Credentials & Inputs Checklist Before Next Run
-
-To resume Phase 3.5 live read-only integration safely on `mw-hygiene-p35-isolated`, provide (outside source control, injected directly into `/srv/mw-hygiene-p35-isolated/.env` or authenticated Settings UI):
-
-1. **MailWizz 3.0.5 Base URL & API Key:** Read-only (or lowest-privilege API user) key, with `ENABLE_MAILWIZZ_MUTATIONS="false"` retained.
-2. **Historical Engagement Source (Priority C):** Read-only MySQL Reporting DB connection (`MAILWIZZ_REPORTING_DB_URL` + table prefix `MAILWIZZ_REPORTING_DB_PREFIX`, e.g., `mw_`), **or** exported per-campaign open/click/bounce/unsubscribe CSV files if MySQL port is inaccessible from `cloud-vps`.
-3. **Alibaba Cloud DirectMail Read-Only Credentials:** RAM user with read-only DirectMail statistics/track query permissions + region (`ap-southeast-1`, `cn-hangzhou`, etc.).
-4. **Domain Hostnames:** Exact `From:` domain(s), MailWizz custom tracking domain (if configured), and DKIM selector(s) if non-default.
-
----
-
-## 7. Final Decision
-
-**NO-GO** for proceeding to any subscriber cleanup review or mutation planning.
-
-**Conditions required to revisit decision:**
-1. Supply the read-only credentials and domain inputs in Section 6.
-2. Run initial read-only sync, compatibility verification against the live MailWizz 3.0.5 endpoint, Priority C/API engagement coverage reconciliation, DirectMail telemetry import, and DNS checks.
-3. Produce verified subscriber-level classification counts and confirm no tracking blind spots mask genuine engagement before reviewing any inactive candidates.
+1. **Backup Gate (Section 1):**
+   - Authorize installing `age` (`1.1.1-1ubuntu0.24.04.3`) on `cloud-vps`.
+   - Confirm generation/storage of a dedicated off-VPS `age` private recovery key (for example generated locally via `age-keygen` on the operator workstation, keeping `AGE-SECRET-KEY-1...` strictly outside `cloud-vps`), add only its public `BACKUP_AGE_RECIPIENT="age1..."` to `.env`, and run one encrypted `.dump.age` backup + isolated restore verification.
+2. **MailWizz 3.0.5 Read-Only Connection (Sections 3–4):**
+   - Explicitly authorize connecting `mw-hygiene-p35-isolated` to your live MailWizz 3.0.5 server (`ENABLE_MAILWIZZ_MUTATIONS="false"`).
+   - Provide the MailWizz 3.0.5 API base URL and read-only API key via the authenticated Settings UI (`http://127.0.0.1:13000` over SSH tunnel) or `.env`.
+3. **Target List & Engagement / DNS Inputs (Sections 5–7):**
+   - Confirm the target ~1,800-subscriber list (once `GET /lists` metadata is inspected read-only) for the 25-subscriber sample and subsequent read-only sync.
+   - Provide or confirm the preferred historical engagement source (MailWizz API / exported campaign CSVs first; separately approved `SELECT`-only MySQL account only if exports/API lack subscriber-level history).
+   - Provide sending `From:` domain(s), MailWizz tracking hostname (if configured), and DKIM selector(s) for DNS/tracking diagnostics (plus optional read-only Alibaba DirectMail RAM credentials when ready).

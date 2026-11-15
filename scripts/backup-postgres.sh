@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
-# Encrypted PostgreSQL logical backup script for MailWizz List Hygiene Manager
-# Never stores raw credentials or plaintext subscriber dumps on disk.
+# Authenticated encrypted PostgreSQL logical backup script (age AEAD)
+# Uses a dedicated public recipient (BACKUP_AGE_RECIPIENT); the private recovery
+# identity stays strictly outside the VPS and APP_ENCRYPTION_KEY is never reused.
 set -eu
 umask 077
 
@@ -22,34 +23,35 @@ load_env_var() {
 
 load_env_var "BACKUP_DIR"
 load_env_var "BACKUP_RETENTION_DAYS"
-load_env_var "BACKUP_ENCRYPTION_KEY"
-load_env_var "APP_ENCRYPTION_KEY"
+load_env_var "BACKUP_AGE_RECIPIENT"
 load_env_var "POSTGRES_USER"
 load_env_var "POSTGRES_DB"
 
-if ! command -v openssl >/dev/null 2>&1; then
-  echo "Error: openssl is required to encrypt database backups." >&2
+if ! command -v age >/dev/null 2>&1; then
+  echo "Error: 'age' is required for authenticated backup encryption (https://age-encryption.org)." >&2
   exit 1
 fi
 
-BACKUP_ENC_KEY="${BACKUP_ENCRYPTION_KEY:-${APP_ENCRYPTION_KEY:-}}"
-if [ -z "$BACKUP_ENC_KEY" ] || [ "${#BACKUP_ENC_KEY}" -lt 32 ]; then
-  echo "Error: BACKUP_ENCRYPTION_KEY or APP_ENCRYPTION_KEY (>=32 chars) must be set." >&2
-  exit 1
-fi
-export BACKUP_ENC_KEY
+BACKUP_AGE_RECIPIENT="${BACKUP_AGE_RECIPIENT:-}"
+case "$BACKUP_AGE_RECIPIENT" in
+  age1[0-9a-z]*) ;;
+  *)
+    echo "Error: BACKUP_AGE_RECIPIENT (public 'age1...' key separate from APP_ENCRYPTION_KEY) must be set." >&2
+    exit 1
+    ;;
+esac
 
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 mkdir -p "$BACKUP_DIR"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT_FILE="${BACKUP_DIR}/hygiene_db_${TIMESTAMP}.dump.enc"
+OUT_FILE="${BACKUP_DIR}/hygiene_db_${TIMESTAMP}.dump.age"
 
-# Stream pg_dump directly into AES-256-CBC PBKDF2 so no plaintext dump touches disk.
+# Stream pg_dump directly into age AEAD encryption so no plaintext dump touches disk.
 docker compose exec -T postgres pg_dump \
   -U "${POSTGRES_USER:-hygiene_user}" \
   -d "${POSTGRES_DB:-mailwizz_hygiene}" \
-  -F c </dev/null | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_ENC_KEY -out "$OUT_FILE"
+  -F c </dev/null | age -r "$BACKUP_AGE_RECIPIENT" -o "$OUT_FILE"
 
 if [ ! -s "$OUT_FILE" ]; then
   rm -f "$OUT_FILE"
@@ -68,4 +70,4 @@ find "$BACKUP_DIR" -maxdepth 1 -type f -name 'hygiene_db_*.dump*' -mtime "+${BAC
   fi
 done
 
-echo "Encrypted backup written: $OUT_FILE"
+echo "Authenticated age backup written: $OUT_FILE"

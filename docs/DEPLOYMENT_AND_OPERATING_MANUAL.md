@@ -106,25 +106,40 @@ hygiene.internal.example.com {
 
 ---
 
-## 6. Backup & Restore Procedures
+## 6. Backup, Retention & Recovery Procedures
 
-Always retain **both** the PostgreSQL dump **and** your offline copy of `APP_ENCRYPTION_KEY` (encrypted secrets and `.enc.json` snapshots cannot be decrypted without `APP_ENCRYPTION_KEY`).
+PostgreSQL backups use **authenticated encryption (`age`, X25519 + ChaCha20-Poly1305)** with a **dedicated backup identity**, completely separate from `APP_ENCRYPTION_KEY`. Always store the private recovery key (`AGE-SECRET-KEY-1...`) **strictly outside the VPS** (e.g., offline password manager or hardware-backed workstation store). Only the public recipient (`BACKUP_AGE_RECIPIENT="age1..."`) belongs in `.env` on the VPS.
 
-### Automated PostgreSQL Backup
+### Prerequisites on Host
+1. Install `age` (`apt-get install -y age` on Ubuntu/Debian or `winget install FiloSottile.age` on Windows).
+2. Generate the backup identity **off the VPS** (e.g., on your operator workstation):
+   ```bash
+   age-keygen -o mailwizz-hygiene-backup.key
+   # Save mailwizz-hygiene-backup.key offline/off-VPS; copy ONLY the printed "public key: age1..." string
+   ```
+3. Set `BACKUP_AGE_RECIPIENT="age1..."` in `.env` on the VPS. Confirm you can access the offline recovery key before importing subscriber data.
+
+### Automated Encrypted PostgreSQL Backup & Retention
 Run `./scripts/backup-postgres.sh` (or schedule via host `cron`):
 ```bash
 ./scripts/backup-postgres.sh
 ```
-This produces `./backups/hygiene_db_<UTC>.dump` plus a `.sha256` checksum file.
+- Streams `pg_dump -F c` directly through `age` without writing plaintext `.dump` files to disk.
+- Writes `./backups/hygiene_db_<UTC>.dump.age` + `.sha256` with `umask 077` (`0600`).
+- Automatically shreds (`shred -u`) backup files older than `BACKUP_RETENTION_DAYS` (default `14`). Never store decrypted SQL/dump files in `/tmp` or `./backups`.
 
-### PostgreSQL Restore
+### Encrypted PostgreSQL Restore (Isolated Testing or Disaster Recovery)
+Supply the off-VPS private recovery identity only during restoration (or stream via SSH/RAM `/dev/shm` and `shred -u` immediately after):
 ```bash
-./scripts/restore-postgres.sh ./backups/hygiene_db_<UTC>.dump
+./scripts/restore-postgres.sh ./backups/hygiene_db_<UTC>.dump.age /path/to/mailwizz-hygiene-backup.key
 docker compose restart web worker
+# If copied temporarily to a RAM path on the VPS during recovery:
+# shred -u /dev/shm/mailwizz-hygiene-backup.key
 ```
+If restoring a pre-migration legacy `.dump.enc` archive, export the explicit `BACKUP_ENCRYPTION_KEY` used when it was written and pass that `.dump.enc` path directly.
 
 ### Application Logical Config & Deliverability Snapshot
-In addition to `pg_dump`, `src/services/security/backup.ts` (`exportEncryptedAppBackup` / `restoreEncryptedAppBackup`) produces AES-256-GCM encrypted, SHA-256 verified JSON backups of rule settings, saved smart filters, DNS checks, Alibaba DirectMail metrics, seed inbox placement logs, and Postmaster stats without exporting raw subscriber PII.
+In addition to `pg_dump`, `src/services/security/backup.ts` (`exportEncryptedAppBackup` / `restoreEncryptedAppBackup`) produces AES-256-GCM encrypted, SHA-256 verified JSON backups of rule settings, saved smart filters, DNS checks, Alibaba DirectMail metrics, seed inbox placement logs, and Postmaster stats without exporting raw subscriber PII (requiring `APP_ENCRYPTION_KEY` stored offline).
 
 ---
 
