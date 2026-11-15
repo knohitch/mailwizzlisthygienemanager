@@ -19,6 +19,7 @@ WORKDIR /app
 RUN apk add --no-cache openssl && addgroup -S appgroup && adduser -S appuser -G appgroup && mkdir -p /app/backups && chown appuser:appgroup /app/backups
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
 COPY --from=builder --chown=appuser:appgroup /app/public ./public

@@ -44,6 +44,7 @@ services:
       - .env
     environment:
       NODE_ENV: "production"
+      HOSTNAME: "0.0.0.0"
       ENABLE_MAILWIZZ_MUTATIONS: "${ENABLE_MAILWIZZ_MUTATIONS:-false}"
     volumes:
       - backups_data:/app/backups
