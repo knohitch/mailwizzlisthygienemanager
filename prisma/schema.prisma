@@ -432,7 +432,7 @@ model MailingList {
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 
-  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Restrict)
   subscribers        Subscriber[]
   segments           ListSegment[]
   campaigns          Campaign[]
@@ -459,7 +459,7 @@ model ListSegment {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Restrict)
   mailingList        MailingList                @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
   memberships        SegmentMembership[]
 
@@ -532,7 +532,7 @@ model Subscriber {
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
 
-  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Restrict)
   mailingList        MailingList                @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
   engagementEvents   EngagementEvent[]
   segmentMemberships SegmentMembership[]
@@ -598,7 +598,7 @@ model Campaign {
   createdAt                DateTime             @default(now())
   updatedAt                DateTime             @updatedAt
 
-  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Restrict)
   mailingList        MailingList?               @relation(fields: [mailingListId], references: [id], onDelete: SetNull)
   engagementEvents   EngagementEvent[]
 
@@ -623,7 +623,7 @@ model EngagementEvent {
   dedupeKey            String              @unique
   createdAt            DateTime            @default(now())
 
-  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Restrict)
   subscriber         Subscriber                 @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
   campaign           Campaign?                  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   mailingList        MailingList                @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
@@ -742,7 +742,7 @@ model CleanupOperation {
   updatedAt                 DateTime               @updatedAt
   completedAt               DateTime?
 
-  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Restrict)
   mailingList        MailingList?               @relation(fields: [mailingListId], references: [id], onDelete: SetNull)
   records            CleanupOperationRecord[]
 
@@ -775,7 +775,7 @@ model CleanupOperationRecord {
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
-  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Restrict)
   operation          CleanupOperation           @relation(fields: [operationId], references: [id], onDelete: Cascade)
   subscriber         Subscriber?                @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
 
@@ -812,7 +812,7 @@ model ReengagementPlan {
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
 
-  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Restrict)
   mailingList        MailingList                @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
 
   @@index([customerConnectionId, mailingListId, status])

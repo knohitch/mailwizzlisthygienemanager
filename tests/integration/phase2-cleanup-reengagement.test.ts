@@ -249,16 +249,28 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
         where: { id: { in: createdPlanIds } },
       });
     }
+    await prisma.cleanupOperationRecord.deleteMany({
+      where: { customerConnectionId: P2_CONN_ID },
+    });
     if (createdOpIds.length > 0) {
       await prisma.cleanupOperation.deleteMany({
         where: { id: { in: createdOpIds } },
       });
     }
+    await prisma.cleanupOperation.deleteMany({
+      where: { customerConnectionId: P2_CONN_ID },
+    });
     if (createdJobIds.length > 0) {
       await prisma.syncJob.deleteMany({
         where: { id: { in: createdJobIds } },
       });
     }
+    await prisma.engagementEvent.deleteMany({
+      where: { customerConnectionId: P2_CONN_ID },
+    });
+    await prisma.subscriber.deleteMany({
+      where: { customerConnectionId: P2_CONN_ID },
+    });
     await prisma.campaign.deleteMany({
       where: { campaignUid: { startsWith: 'p2_camp_' } },
     });

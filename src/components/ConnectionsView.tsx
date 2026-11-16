@@ -352,6 +352,23 @@ export function ConnectionsView({
     }
   }
 
+  async function submitArchiveConnection() {
+    if (!deleteTarget) return;
+    const ok = await patchConnection(
+      deleteTarget.id,
+      {
+        action: 'ARCHIVE_CONNECTION',
+        confirmationPhrase: deleteConfirmPhrase,
+        reason: 'Disabled and archived by administrator (consent, snapshot, and audit history preserved)',
+      },
+      `Disabled and archived "${deleteTarget.customerName}". Credentials revoked; consent, cleanup snapshots, and audit history preserved.`
+    );
+    if (ok) {
+      setDeleteTarget(null);
+      setDeleteConfirmPhrase('');
+    }
+  }
+
   async function submitDeleteConnection(e: React.FormEvent) {
     e.preventDefault();
     if (!deleteTarget) return;
@@ -373,7 +390,7 @@ export function ConnectionsView({
       }
       setFeedback({
         type: 'ok',
-        text: `Removed customer connection "${deleteTarget.customerName}" and its isolated data.`,
+        text: `Removed empty customer connection "${deleteTarget.customerName}" (audit logs preserved).`,
       });
       setDeleteTarget(null);
       setDeleteConfirmPhrase('');
@@ -791,44 +808,85 @@ export function ConnectionsView({
           </Card>
         )}
 
-        {/* Delete Confirmation Dialog */}
-        {deleteTarget && (
-          <Card className="border-rose-200 bg-rose-50/50 p-5">
-            <form onSubmit={submitDeleteConnection} className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-rose-900">
-                  <AlertTriangle className="h-4 w-4 text-rose-700" />
-                  Confirm Customer Connection Removal
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setDeleteTarget(null)}
-                  className="text-xs text-slate-500 hover:text-slate-700"
-                >
-                  Close
-                </button>
-              </div>
-              <p className="text-xs text-rose-900">
-                This permanently removes local synced lists, subscribers, campaigns, cleanup records, and credentials for{' '}
-                <strong>{deleteTarget.customerName}</strong> (slug: <code>{deleteTarget.customerSlug}</code>). Remote MailWizz data is never modified. Type <code>{deleteTarget.customerName}</code> or <code>{deleteTarget.customerSlug}</code> to confirm.
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  required
-                  placeholder={`Type "${deleteTarget.customerName}"`}
-                  value={deleteConfirmPhrase}
-                  onChange={(e) => setDeleteConfirmPhrase(e.target.value)}
-                  className="min-w-72 flex-1 rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm"
-                />
-                <Button type="submit" variant="danger" disabled={loading}>
-                  <Trash2 className="h-4 w-4" />
-                  Permanently Delete Connection
-                </Button>
-              </div>
-            </form>
-          </Card>
-        )}
+        {/* Safe Archive / Empty Connection Removal Dialog */}
+        {deleteTarget && (() => {
+          const hasRetainedHistory =
+            deleteTarget.counts.mailingLists > 0 ||
+            deleteTarget.counts.subscribers > 0 ||
+            deleteTarget.counts.campaigns > 0 ||
+            deleteTarget.counts.cleanupOperations > 0;
+          return (
+            <Card className="border-rose-200 bg-rose-50/50 p-5">
+              <form
+                onSubmit={(e) => {
+                  if (hasRetainedHistory) {
+                    e.preventDefault();
+                    void submitArchiveConnection();
+                  } else {
+                    void submitDeleteConnection(e);
+                  }
+                }}
+                className="space-y-3"
+              >
+                <div className="flex items-center justify-between">
+                  <h2 className="flex items-center gap-2 text-sm font-semibold text-rose-900">
+                    <AlertTriangle className="h-4 w-4 text-rose-700" />
+                    {hasRetainedHistory
+                      ? 'Disable & Archive Customer Connection (History Preserved)'
+                      : 'Archive or Remove Empty Customer Connection'}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(null)}
+                    className="text-xs text-slate-500 hover:text-slate-700"
+                  >
+                    Close
+                  </button>
+                </div>
+                <p className="text-xs text-rose-900">
+                  {hasRetainedHistory ? (
+                    <>
+                      <strong>{deleteTarget.customerName}</strong> retains synced lists, subscribers, or cleanup records (
+                      <code>{deleteTarget.counts.subscribers}</code> subscribers, <code>{deleteTarget.counts.cleanupOperations}</code> cleanup ops). Hard deletion is blocked to protect consent history, recovery snapshots, and audit accountability. Archiving revokes all API keys and webhook secrets, pauses sync, and disables remote calls while preserving history. Type{' '}
+                      <code>{deleteTarget.customerName}</code> or <code>{deleteTarget.customerSlug}</code> to confirm.
+                    </>
+                  ) : (
+                    <>
+                      This connection has no retained lists, subscribers, campaigns, or cleanup history. You may disable &amp; archive it or permanently delete the empty connection record for{' '}
+                      <strong>{deleteTarget.customerName}</strong> (slug: <code>{deleteTarget.customerSlug}</code>). Audit logs remain preserved. Remote MailWizz data is never modified. Type{' '}
+                      <code>{deleteTarget.customerName}</code> or <code>{deleteTarget.customerSlug}</code> to confirm.
+                    </>
+                  )}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder={`Type "${deleteTarget.customerName}"`}
+                    value={deleteConfirmPhrase}
+                    onChange={(e) => setDeleteConfirmPhrase(e.target.value)}
+                    className="min-w-72 flex-1 rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={loading}
+                    onClick={() => void submitArchiveConnection()}
+                  >
+                    <Power className="h-4 w-4" />
+                    Disable &amp; Archive (Keep History)
+                  </Button>
+                  {!hasRetainedHistory && (
+                    <Button type="submit" variant="danger" disabled={loading}>
+                      <Trash2 className="h-4 w-4" />
+                      Permanently Delete Connection
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </Card>
+          );
+        })()}
 
         {/* Bounded Live Read-Only Sample Inspector */}
         {sampleData && (
@@ -1101,7 +1159,13 @@ export function ConnectionsView({
                       }}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                      Remove
+                      {conn.counts.mailingLists +
+                        conn.counts.subscribers +
+                        conn.counts.campaigns +
+                        conn.counts.cleanupOperations >
+                      0
+                        ? 'Archive'
+                        : 'Remove'}
                     </Button>
                   </div>
                 </div>

@@ -120,10 +120,16 @@ test.describe('Phase 4 Multi-Customer Connections & Isolation E2E', () => {
       page.getByRole('region', { name: 'Customer accounts overview' }).getByText(alphaName)
     ).toBeVisible();
 
-    // 11. Return to /connections and remove both E2E test connections using typed confirmation
+    // 11. Return to /connections, exercise safe Disable & Archive on Alpha, then remove empty E2E test connections cleanly
     await page.goto('/connections');
-    await searchInput.fill(suffix);
+    await searchInput.fill(alphaName);
     await expect(page.getByText(alphaName).first()).toBeVisible();
+
+    // Archive Alpha cleanly first (revokes key & disables while keeping any history)
+    await page.getByRole('button', { name: /Remove/i }).first().click();
+    await page.getByPlaceholder(/^Type "/).fill(alphaName);
+    await page.getByRole('button', { name: /Disable & Archive/i }).click();
+    await expect(page.getByTestId('connections-feedback')).toContainText(/Disabled and archived/i);
 
     // Wrong confirmation phrase fails closed
     await page.getByRole('button', { name: /Remove/i }).first().click();
@@ -131,14 +137,14 @@ test.describe('Phase 4 Multi-Customer Connections & Isolation E2E', () => {
     await page.getByRole('button', { name: /Permanently Delete Connection/i }).click();
     await expect(page.getByTestId('connections-feedback')).toContainText(/does not match/i);
 
-    // Exact phrase deletes Alpha, then Beta
+    // Exact phrase deletes empty Alpha, then empty Beta
     for (const name of [alphaName, betaName]) {
       await searchInput.fill(name);
       await expect(page.getByText(name).first()).toBeVisible();
       await page.getByRole('button', { name: /Remove/i }).first().click();
       await page.getByPlaceholder(/^Type "/).fill(name);
       await page.getByRole('button', { name: /Permanently Delete Connection/i }).click();
-      await expect(page.getByTestId('connections-feedback')).toContainText(/Removed customer connection/i);
+      await expect(page.getByTestId('connections-feedback')).toContainText(/Removed empty customer connection/i);
     }
   });
 });

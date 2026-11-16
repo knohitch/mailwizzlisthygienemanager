@@ -6,9 +6,11 @@ import { prisma } from '@/lib/db';
 import { resetEnvCacheForTests } from '@/lib/env';
 import { POST as webhookPost } from '@/app/api/webhooks/mailwizz/route';
 import {
+  archiveCustomerConnection,
   createCustomerConnection,
   deleteCustomerConnection,
   getCustomerConnectionById,
+  getDecryptedWebhookSecretForConnection,
   listCustomerConnections,
   revokeCustomerConnectionCredential,
   rotateCustomerConnectionApiKey,
@@ -231,11 +233,20 @@ describe('Integration: Phase 4 Multi-Customer Connections, Isolation, Lifecycle 
       select: { id: true },
     });
     if (stale.length > 0) {
+      const staleIds = stale.map((s) => s.id);
+      await prisma.cleanupOperationRecord.deleteMany({ where: { customerConnectionId: { in: staleIds } } });
+      await prisma.cleanupOperation.deleteMany({ where: { customerConnectionId: { in: staleIds } } });
+      await prisma.reengagementPlan.deleteMany({ where: { customerConnectionId: { in: staleIds } } });
+      await prisma.engagementEvent.deleteMany({ where: { customerConnectionId: { in: staleIds } } });
+      await prisma.subscriber.deleteMany({ where: { customerConnectionId: { in: staleIds } } });
+      await prisma.listSegment.deleteMany({ where: { customerConnectionId: { in: staleIds } } });
+      await prisma.campaign.deleteMany({ where: { customerConnectionId: { in: staleIds } } });
+      await prisma.mailingList.deleteMany({ where: { customerConnectionId: { in: staleIds } } });
       await prisma.syncJob.deleteMany({
-        where: { customerConnectionId: { in: stale.map((s) => s.id) } },
+        where: { customerConnectionId: { in: staleIds } },
       });
       await prisma.mailWizzCustomerConnection.deleteMany({
-        where: { id: { in: stale.map((s) => s.id) } },
+        where: { id: { in: staleIds } },
       });
     }
     await prisma.mailWizzInstallation.deleteMany({
@@ -261,6 +272,30 @@ describe('Integration: Phase 4 Multi-Customer Connections, Isolation, Lifecycle 
       await prisma.syncJob.deleteMany({ where: { id: { in: createdJobIds } } });
     }
     const allIds = [...createdConnectionIds, quarantineConnId];
+    await prisma.cleanupOperationRecord.deleteMany({
+      where: { customerConnectionId: { in: allIds } },
+    });
+    await prisma.cleanupOperation.deleteMany({
+      where: { customerConnectionId: { in: allIds } },
+    });
+    await prisma.reengagementPlan.deleteMany({
+      where: { customerConnectionId: { in: allIds } },
+    });
+    await prisma.engagementEvent.deleteMany({
+      where: { customerConnectionId: { in: allIds } },
+    });
+    await prisma.subscriber.deleteMany({
+      where: { customerConnectionId: { in: allIds } },
+    });
+    await prisma.listSegment.deleteMany({
+      where: { customerConnectionId: { in: allIds } },
+    });
+    await prisma.campaign.deleteMany({
+      where: { customerConnectionId: { in: allIds } },
+    });
+    await prisma.mailingList.deleteMany({
+      where: { customerConnectionId: { in: allIds } },
+    });
     await prisma.syncJob.deleteMany({
       where: { customerConnectionId: { in: allIds } },
     });
@@ -713,7 +748,47 @@ describe('Integration: Phase 4 Multi-Customer Connections, Isolation, Lifecycle 
     expect(revokedConnA.hasActiveCredential).toBe(false);
     await expect(getMailWizzClientWithContext(connA.id)).rejects.toThrow(/disabled/i);
 
-    // 11. Typed delete confirmation: wrong phrase & RUNNING job both block deletion; right phrase deletes ONLY Alpha
+    // 11. Safe connection archival & protected retention guarantees:
+    // Record a cleanup snapshot on Alpha so consent + snapshot + audit retention is exercised explicitly
+    const alphaSnapshotOp = await prisma.cleanupOperation.create({
+      data: {
+        customerConnectionId: connA.id,
+        operationKey: `p4-iso-snapshot-${Date.now()}`,
+        actionType: 'UNSUBSCRIBE',
+        mailingListId: listA.id,
+        targetListUid: listA.listUid,
+        dryRunOnly: false,
+        status: 'COMPLETED',
+        matchedCount: 1,
+        eligibleCount: 1,
+        succeededCount: 1,
+        createdByEmail: ACTOR,
+        completedAt: new Date(),
+      },
+    });
+    const alphaSub = await prisma.subscriber.findFirstOrThrow({
+      where: { customerConnectionId: connA.id },
+    });
+    await prisma.cleanupOperationRecord.create({
+      data: {
+        customerConnectionId: connA.id,
+        operationId: alphaSnapshotOp.id,
+        idempotencyKey: `p4-iso-snap-rec-${Date.now()}`,
+        subscriberId: alphaSub.id,
+        subscriberUid: alphaSub.subscriberUid,
+        mailingListUid: listA.listUid,
+        emailHash: alphaSub.emailHash,
+        maskedEmail: 's***@example.com',
+        previousStatus: 'CONFIRMED',
+        previousSuppressed: false,
+        previousEngagement: 'ACTIVE',
+        intendedAction: 'UNSUBSCRIBE',
+        outcome: 'SUCCEEDED',
+        processedAt: new Date(),
+      },
+    });
+
+    // Wrong confirmation phrase fails closed
     await expect(
       deleteCustomerConnection({
         connectionId: connA.id,
@@ -739,14 +814,72 @@ describe('Integration: Phase 4 Multi-Customer Connections, Isolation, Lifecycle 
       data: { status: 'CANCELLED', finishedAt: new Date() },
     });
 
-    const delRes = await deleteCustomerConnection({
+    // Hard delete MUST FAIL CLOSED when Alpha retains consent/engagement/cleanup snapshot history
+    await expect(
+      deleteCustomerConnection({
+        connectionId: connA.id,
+        confirmationPhrase: connA.customerSlug,
+        actorEmail: ACTOR,
+      })
+    ).rejects.toThrow(/Refusing destructive delete/i);
+
+    // PostgreSQL FK ON DELETE RESTRICT also refuses raw SQL cascade deletion
+    await expect(
+      prisma.mailWizzCustomerConnection.delete({ where: { id: connA.id } })
+    ).rejects.toThrow();
+
+    // Disable & Archive revokes secrets, scrubs webhook/DB secrets, disables connection, and 100% preserves history
+    await expect(
+      archiveCustomerConnection({
+        connectionId: connA.id,
+        confirmationPhrase: 'WRONG-PHRASE',
+        actorEmail: ACTOR,
+      })
+    ).rejects.toThrow(/does not match/i);
+
+    const archivedRes = await archiveCustomerConnection({
       connectionId: connA.id,
       confirmationPhrase: connA.customerSlug,
+      reason: 'Customer offboarded safely',
       actorEmail: ACTOR,
     });
-    expect(delRes.deletedConnectionId).toBe(connA.id);
-    expect(await getCustomerConnectionById(connA.id)).toBeNull();
-    expect(await prisma.mailingList.findUnique({ where: { id: listA.id } })).toBeNull();
+    expect(archivedRes.archivedConnectionId).toBe(connA.id);
+    expect(archivedRes.connection.isEnabled).toBe(false);
+    expect(archivedRes.connection.status).toBe('DISABLED');
+    expect(archivedRes.connection.hasActiveCredential).toBe(false);
+    expect(archivedRes.connection.hasWebhookSecret).toBe(false);
+    expect(archivedRes.connection.syncState?.isPaused).toBe(true);
+    expect(await getDecryptedWebhookSecretForConnection(connA.id)).toBeNull();
+    // Retained consent history, events, cleanup snapshots, and audit trail remain intact!
+    expect(await prisma.mailingList.findUnique({ where: { id: listA.id } })).not.toBeNull();
+    expect(await prisma.subscriber.count({ where: { customerConnectionId: connA.id } })).toBeGreaterThan(0);
+    expect(await prisma.engagementEvent.count({ where: { customerConnectionId: connA.id } })).toBeGreaterThan(0);
+    expect(await prisma.cleanupOperationRecord.count({ where: { customerConnectionId: connA.id } })).toBe(1);
+    const archiveAudit = await prisma.auditLog.findFirst({
+      where: { customerConnectionId: connA.id, action: 'ARCHIVE_CUSTOMER_CONNECTION' },
+    });
+    expect(archiveAudit).not.toBeNull();
+
+    // Empty onboarding connection (0 retained records) CAN still be permanently deleted while preserving AuditLog
+    const emptyConn = await createCustomerConnection({
+      customerName: 'P4 Empty Disposable',
+      customerSlug: 'p4-iso-empty-delete',
+      baseUrl: sharedBaseUrl,
+      apiKey: 'mw-empty-delete-key-7777',
+      actorEmail: ACTOR,
+    });
+    const emptyDel = await deleteCustomerConnection({
+      connectionId: emptyConn.id,
+      confirmationPhrase: emptyConn.customerSlug,
+      actorEmail: ACTOR,
+    });
+    expect(emptyDel.deletedConnectionId).toBe(emptyConn.id);
+    expect(await getCustomerConnectionById(emptyConn.id)).toBeNull();
+    const emptyDeleteAudit = await prisma.auditLog.findFirst({
+      where: { action: 'DELETE_CUSTOMER_CONNECTION', resourceId: emptyConn.id },
+    });
+    expect(emptyDeleteAudit).not.toBeNull();
+
     // Beta data remains 100% intact!
     expect(await prisma.mailingList.findUnique({ where: { id: listB.id } })).not.toBeNull();
     expect(await prisma.subscriber.findUnique({ where: { id: subB.id } })).not.toBeNull();

@@ -184,7 +184,8 @@ type ConnectionWithIncludes = Prisma.MailWizzCustomerConnectionGetPayload<{
 export function toSafeConnectionDto(
   row: ConnectionWithIncludes
 ): SafeCustomerConnectionDto {
-  const activeCred = row.credentials[0] ?? null;
+  const activeCred =
+    row.credentials.find((c) => c.isActive && c.status === 'ACTIVE') ?? null;
   return {
     id: row.id,
     installationId: row.installationId,
@@ -945,6 +946,188 @@ export async function setConnectionSyncPaused(params: {
   });
 }
 
+export async function archiveCustomerConnection(params: {
+  connectionId: string;
+  confirmationPhrase: string;
+  reason?: string;
+  actorEmail: string;
+  ipAddress?: string;
+}): Promise<{
+  archivedConnectionId: string;
+  customerName: string;
+  connection: SafeCustomerConnectionDto;
+  preservedCounts: {
+    mailingLists: number;
+    subscribers: number;
+    campaigns: number;
+    engagementEvents: number;
+    cleanupOperations: number;
+    cleanupOperationRecords: number;
+    reengagementPlans: number;
+  };
+}> {
+  const conn = await prisma.mailWizzCustomerConnection.findUnique({
+    where: { id: params.connectionId },
+  });
+  if (!conn) {
+    throw new Error(`Customer connection "${params.connectionId}" not found.`);
+  }
+
+  const trimmedConfirm = params.confirmationPhrase.trim();
+  if (
+    trimmedConfirm !== conn.customerName &&
+    trimmedConfirm !== conn.customerSlug
+  ) {
+    throw new Error(
+      `Typed confirmation does not match customer name "${conn.customerName}" or slug "${conn.customerSlug}".`
+    );
+  }
+
+  const activeJobs = await prisma.syncJob.count({
+    where: {
+      customerConnectionId: params.connectionId,
+      status: 'RUNNING',
+    },
+  });
+  if (activeJobs > 0) {
+    throw new Error(
+      'Cannot archive a customer connection while background jobs are RUNNING. Wait for running jobs to finish first.'
+    );
+  }
+
+  const archiveReason = params.reason?.trim() || 'Archived by administrator (history preserved)';
+  const now = new Date();
+  const archivedNoteLine = `[ARCHIVED ${now.toISOString()} by ${params.actorEmail}]: ${archiveReason}`;
+  const updatedNotes = conn.notes ? `${conn.notes}\n${archivedNoteLine}` : archivedNoteLine;
+
+  const [
+    mailingLists,
+    subscribers,
+    campaigns,
+    engagementEvents,
+    cleanupOperations,
+    cleanupOperationRecords,
+    reengagementPlans,
+  ] = await Promise.all([
+    prisma.mailingList.count({ where: { customerConnectionId: conn.id } }),
+    prisma.subscriber.count({ where: { customerConnectionId: conn.id } }),
+    prisma.campaign.count({ where: { customerConnectionId: conn.id } }),
+    prisma.engagementEvent.count({ where: { customerConnectionId: conn.id } }),
+    prisma.cleanupOperation.count({ where: { customerConnectionId: conn.id } }),
+    prisma.cleanupOperationRecord.count({ where: { customerConnectionId: conn.id } }),
+    prisma.reengagementPlan.count({ where: { customerConnectionId: conn.id } }),
+  ]);
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.syncJob.updateMany({
+      where: {
+        customerConnectionId: params.connectionId,
+        status: 'PENDING',
+      },
+      data: {
+        status: 'CANCELLED',
+        finishedAt: now,
+        lastError: 'Cancelled because customer connection was disabled and archived.',
+      },
+    });
+
+    await tx.mailWizzConnectionCredential.updateMany({
+      where: {
+        customerConnectionId: params.connectionId,
+        status: { not: 'REVOKED' },
+      },
+      data: {
+        status: 'REVOKED',
+        isActive: false,
+        revokedAt: now,
+        revokedReason: archiveReason,
+      },
+    });
+
+    await tx.connectionSyncState.upsert({
+      where: { customerConnectionId: params.connectionId },
+      create: {
+        customerConnectionId: params.connectionId,
+        isPaused: true,
+        pauseReason: archiveReason,
+        pausedByEmail: params.actorEmail,
+        pausedAt: now,
+      },
+      update: {
+        isPaused: true,
+        pauseReason: archiveReason,
+        pausedByEmail: params.actorEmail,
+        pausedAt: now,
+      },
+    });
+
+    return tx.mailWizzCustomerConnection.update({
+      where: { id: params.connectionId },
+      data: {
+        isEnabled: false,
+        isPrimary: false,
+        status: conn.isQuarantine ? 'LEGACY_QUARANTINE' : 'DISABLED',
+        syncScheduleEnabled: false,
+        webhookSecretEnc: null,
+        webhookSecretLast4: null,
+        reportingDbUrlEnc: null,
+        notes: updatedNotes,
+      },
+      include: {
+        installation: true,
+        credentials: {
+          where: { isActive: true, status: 'ACTIVE' },
+          orderBy: { version: 'desc' },
+          take: 1,
+        },
+        health: true,
+        syncState: true,
+        _count: {
+          select: {
+            mailingLists: true,
+            subscribers: true,
+            campaigns: true,
+            cleanupOperations: true,
+          },
+        },
+      },
+    });
+  });
+
+  const preservedCounts = {
+    mailingLists,
+    subscribers,
+    campaigns,
+    engagementEvents,
+    cleanupOperations,
+    cleanupOperationRecords,
+    reengagementPlans,
+  };
+
+  await recordAuditLog({
+    customerConnectionId: params.connectionId,
+    actorEmail: params.actorEmail,
+    action: 'ARCHIVE_CUSTOMER_CONNECTION',
+    resourceType: 'MailWizzCustomerConnection',
+    resourceId: params.connectionId,
+    outcome: 'SUCCESS',
+    ipAddress: params.ipAddress,
+    details: {
+      customerName: conn.customerName,
+      customerSlug: conn.customerSlug,
+      reason: archiveReason,
+      preservedCounts,
+    },
+  });
+
+  return {
+    archivedConnectionId: conn.id,
+    customerName: conn.customerName,
+    connection: toSafeConnectionDto(updated),
+    preservedCounts,
+  };
+}
+
 export async function deleteCustomerConnection(params: {
   connectionId: string;
   confirmationPhrase: string;
@@ -980,6 +1163,62 @@ export async function deleteCustomerConnection(params: {
     );
   }
 
+  const [
+    mailingLists,
+    listSegments,
+    subscribers,
+    campaigns,
+    engagementEvents,
+    cleanupOperations,
+    cleanupOperationRecords,
+    reengagementPlans,
+  ] = await Promise.all([
+    prisma.mailingList.count({ where: { customerConnectionId: params.connectionId } }),
+    prisma.listSegment.count({ where: { customerConnectionId: params.connectionId } }),
+    prisma.subscriber.count({ where: { customerConnectionId: params.connectionId } }),
+    prisma.campaign.count({ where: { customerConnectionId: params.connectionId } }),
+    prisma.engagementEvent.count({ where: { customerConnectionId: params.connectionId } }),
+    prisma.cleanupOperation.count({ where: { customerConnectionId: params.connectionId } }),
+    prisma.cleanupOperationRecord.count({ where: { customerConnectionId: params.connectionId } }),
+    prisma.reengagementPlan.count({ where: { customerConnectionId: params.connectionId } }),
+  ]);
+
+  const retainedTotal =
+    mailingLists +
+    listSegments +
+    subscribers +
+    campaigns +
+    engagementEvents +
+    cleanupOperations +
+    cleanupOperationRecords +
+    reengagementPlans;
+
+  if (retainedTotal > 0) {
+    await recordAuditLog({
+      customerConnectionId: params.connectionId,
+      actorEmail: params.actorEmail,
+      action: 'DELETE_CUSTOMER_CONNECTION_BLOCKED',
+      resourceType: 'MailWizzCustomerConnection',
+      resourceId: params.connectionId,
+      outcome: 'DENIED',
+      ipAddress: params.ipAddress,
+      details: {
+        customerName: conn.customerName,
+        retainedTotal,
+        mailingLists,
+        subscribers,
+        campaigns,
+        engagementEvents,
+        cleanupOperations,
+        cleanupOperationRecords,
+        reengagementPlans,
+      },
+    });
+    throw new Error(
+      `Refusing destructive delete for "${conn.customerName}": ${retainedTotal} historical/recovery record(s) exist (subscribers=${subscribers}, events=${engagementEvents}, cleanupSnapshots=${cleanupOperationRecords}, cleanupOps=${cleanupOperations}). Use Disable & Archive instead to revoke credentials while preserving consent, recovery, and audit history.`
+    );
+  }
+
   await recordAuditLog({
     customerConnectionId: params.connectionId,
     actorEmail: params.actorEmail,
@@ -1003,7 +1242,7 @@ export async function deleteCustomerConnection(params: {
       data: {
         status: 'CANCELLED',
         finishedAt: new Date(),
-        lastError: 'Cancelled because customer connection was deleted.',
+        lastError: 'Cancelled because empty customer connection was deleted.',
       },
     });
     await tx.mailWizzCustomerConnection.delete({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireApiAuth } from '@/lib/api-auth';
 import {
+  archiveCustomerConnection,
   deleteCustomerConnection,
   getCustomerConnectionById,
   revokeCustomerConnectionCredential,
@@ -50,6 +51,11 @@ const PatchConnectionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('SET_ENABLED'),
     isEnabled: z.boolean(),
+  }),
+  z.object({
+    action: z.literal('ARCHIVE_CONNECTION'),
+    confirmationPhrase: z.string().trim().min(1),
+    reason: z.string().trim().max(300).optional(),
   }),
 ]);
 
@@ -158,6 +164,16 @@ export async function PATCH(
         });
         return NextResponse.json({ ok: true, connection });
       }
+      case 'ARCHIVE_CONNECTION': {
+        const archived = await archiveCustomerConnection({
+          connectionId: id,
+          confirmationPhrase: parsed.data.confirmationPhrase,
+          reason: parsed.data.reason,
+          actorEmail: auth.session.adminEmail,
+          ipAddress: auth.ip,
+        });
+        return NextResponse.json({ ok: true, archived, connection: archived.connection });
+      }
     }
   } catch (err) {
     return NextResponse.json(
@@ -203,9 +219,8 @@ export async function DELETE(
     });
     return NextResponse.json({ ok: true, deleted });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to delete customer connection.' },
-      { status: 400 }
-    );
+    const message = err instanceof Error ? err.message : 'Failed to delete customer connection.';
+    const status = message.includes('Refusing destructive delete') ? 409 : 400;
+    return NextResponse.json({ error: message }, { status });
   }
 }
