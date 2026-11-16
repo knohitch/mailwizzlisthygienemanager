@@ -697,6 +697,20 @@ describe('Integration: Phase 4 Multi-Customer Connections, Isolation, Lifecycle 
       actorEmail: ACTOR,
     });
 
+    // Disabling then re-enabling auto-clears the disable-pause so healthy connections resume normally
+    const disabledB = await updateCustomerConnection(connB.id, {
+      isEnabled: false,
+      actorEmail: ACTOR,
+    });
+    expect(disabledB.isEnabled).toBe(false);
+    expect(disabledB.syncState?.isPaused).toBe(true);
+    const reenabledB = await updateCustomerConnection(connB.id, {
+      isEnabled: true,
+      actorEmail: ACTOR,
+    });
+    expect(reenabledB.isEnabled).toBe(true);
+    expect(reenabledB.syncState?.isPaused).toBe(false);
+
     // 9. API key rotation increments credentialVersion, marks v1 ROTATED, cancels stale jobs, and aborts stale worker execution
     const jobBeforeRotate = await enqueueJob({
       type: 'ANALYZE_HYGIENE',

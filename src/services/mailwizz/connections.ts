@@ -564,6 +564,7 @@ export async function updateCustomerConnection(
     include: {
       credentials: { where: { isActive: true, status: 'ACTIVE' }, take: 1 },
       health: true,
+      syncState: true,
     },
   });
   if (!existing) {
@@ -639,6 +640,21 @@ export async function updateCustomerConnection(
           status: 'CANCELLED',
           finishedAt: new Date(),
           lastError: 'Cancelled because customer connection was disabled.',
+        },
+      });
+    } else if (
+      input.isEnabled === true &&
+      !existing.isEnabled &&
+      existing.syncState?.isPaused &&
+      existing.syncState.pauseReason === 'Connection disabled by administrator'
+    ) {
+      await tx.connectionSyncState.update({
+        where: { customerConnectionId: connectionId },
+        data: {
+          isPaused: false,
+          pauseReason: null,
+          pausedByEmail: null,
+          pausedAt: null,
         },
       });
     }
