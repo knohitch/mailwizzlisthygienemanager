@@ -30,6 +30,8 @@ import {
 
 const TEST_LIST_A_UID = 'phase2_test_list_a';
 const TEST_LIST_B_UID = 'phase2_test_list_b';
+const P2_INST_ID = 'p2_test_inst';
+const P2_CONN_ID = 'p2_test_conn';
 
 describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & Restore', () => {
   let listAId = '';
@@ -49,11 +51,37 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
       where: { listUid: { in: [TEST_LIST_A_UID, TEST_LIST_B_UID] } },
     });
 
+    await prisma.mailWizzInstallation.upsert({
+      where: { id: P2_INST_ID },
+      update: { name: 'Phase2 Test MailWizz', isActive: true },
+      create: {
+        id: P2_INST_ID,
+        name: 'Phase2 Test MailWizz',
+        baseUrl: 'https://p2-mock.example.invalid/api/index.php',
+        hostname: 'p2-mock.example.invalid',
+      },
+    });
+    await prisma.mailWizzCustomerConnection.upsert({
+      where: { id: P2_CONN_ID },
+      update: { isEnabled: true, isQuarantine: false, isDemoData: false, status: 'CONNECTED' },
+      create: {
+        id: P2_CONN_ID,
+        installationId: P2_INST_ID,
+        customerName: 'Phase 2 Test Customer',
+        customerSlug: 'p2-test-customer',
+        isEnabled: true,
+        isQuarantine: false,
+        isDemoData: false,
+        status: 'CONNECTED',
+      },
+    });
+
     const now = new Date();
     const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000);
 
     const listA = await prisma.mailingList.create({
       data: {
+        customerConnectionId: P2_CONN_ID,
         listUid: TEST_LIST_A_UID,
         name: 'Phase2 Test List A',
         fromName: 'Acme Test',
@@ -65,6 +93,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
     });
     const listB = await prisma.mailingList.create({
       data: {
+        customerConnectionId: P2_CONN_ID,
         listUid: TEST_LIST_B_UID,
         name: 'Phase2 Test List B',
         fromName: 'Acme Test',
@@ -82,6 +111,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
     for (let i = 0; i < 6; i++) {
       const c = await prisma.campaign.create({
         data: {
+          customerConnectionId: P2_CONN_ID,
           campaignUid: `p2_camp_${i}`,
           mailingListId: listAId,
           listUid: TEST_LIST_A_UID,
@@ -110,6 +140,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
     for (const s of subDefs) {
       const created = await prisma.subscriber.create({
         data: {
+          customerConnectionId: P2_CONN_ID,
           mailingListId: listAId,
           subscriberUid: s.uid,
           email: s.email,
@@ -127,6 +158,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
     // Same shared email UNSUBSCRIBED on List B
     await prisma.subscriber.create({
       data: {
+        customerConnectionId: P2_CONN_ID,
         mailingListId: listBId,
         subscriberUid: 'p2_sub_shared_b',
         email: 'shared.consent@example.com',
@@ -144,6 +176,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
       for (let idx = 0; idx < campIds.length; idx++) {
         await prisma.engagementEvent.create({
           data: {
+            customerConnectionId: P2_CONN_ID,
             subscriberId: subId,
             campaignId: campIds[idx],
             mailingListId: listAId,
@@ -160,6 +193,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
     // active@ clicked 5d ago
     await prisma.engagementEvent.create({
       data: {
+        customerConnectionId: P2_CONN_ID,
         subscriberId: subByUid.p2_sub_active,
         campaignId: campIds[5],
         mailingListId: listAId,
@@ -175,6 +209,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
     for (const key of ['p2_sub_inactive1', 'p2_sub_inactive2'] as const) {
       await prisma.engagementEvent.create({
         data: {
+          customerConnectionId: P2_CONN_ID,
           subscriberId: subByUid[key],
           campaignId: campIds[2],
           mailingListId: listAId,
@@ -191,6 +226,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
     for (const key of ['p2_sub_long', 'p2_sub_shared'] as const) {
       await prisma.engagementEvent.create({
         data: {
+          customerConnectionId: P2_CONN_ID,
           subscriberId: subByUid[key],
           campaignId: campIds[0],
           mailingListId: listAId,
@@ -228,6 +264,12 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
     });
     await prisma.mailingList.deleteMany({
       where: { listUid: { in: [TEST_LIST_A_UID, TEST_LIST_B_UID] } },
+    });
+    await prisma.mailWizzCustomerConnection.deleteMany({
+      where: { id: P2_CONN_ID },
+    });
+    await prisma.mailWizzInstallation.deleteMany({
+      where: { id: P2_INST_ID },
     });
   });
 
@@ -333,6 +375,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
     });
     await prisma.engagementEvent.create({
       data: {
+        customerConnectionId: P2_CONN_ID,
         subscriberId: inactive2.id,
         campaignId: camp.id,
         mailingListId: listAId,
@@ -418,6 +461,7 @@ describe('Integration: Phase 2 Filter, Safety, Batch Execution, Re-engagement & 
     try {
       const nowIso = new Date().toISOString();
       await mailWizzCapabilityRegistry.saveCompatibilityReport({
+        customerConnectionId: P2_CONN_ID,
         actorEmail: p2Actor,
         report: {
           overallStatus: 'FULLY VERIFIED',

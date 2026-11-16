@@ -176,6 +176,20 @@ enum DirectMailSource {
   SYNTHETIC_DEMO
 }
 
+enum ConnectionStatus {
+  PENDING
+  CONNECTED
+  AUTH_FAILED
+  DISABLED
+  LEGACY_QUARANTINE
+}
+
+enum CredentialStatus {
+  ACTIVE
+  ROTATED
+  REVOKED
+}
+
 model AdminSession {
   id         String    @id @default(cuid())
   tokenHash  String    @unique
@@ -240,9 +254,161 @@ model AppConfig {
   updatedAt                    DateTime  @updatedAt
 }
 
+model MailWizzInstallation {
+  id                   String   @id @default(cuid())
+  name                 String
+  baseUrl              String   @unique
+  hostname             String
+  detectedVersion      String?
+  approvedVersion      String?
+  maxRequestsPerSecond Int      @default(5)
+  maxConcurrentJobs    Int      @default(2)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  customerConnections MailWizzCustomerConnection[]
+
+  @@index([hostname])
+}
+
+model MailWizzCustomerConnection {
+  id                   String           @id @default(cuid())
+  installationId       String
+  customerName         String
+  customerSlug         String           @unique
+  mailwizzCustomerUid  String?
+  authMode             String           @default("auto")
+  webhookSecretEnc     String?
+  webhookSecretLast4   String?
+  reportingDbUrlEnc    String?
+  reportingDbPrefix    String           @default("mw_")
+  isEnabled            Boolean          @default(true)
+  isPrimary            Boolean          @default(false)
+  isQuarantine         Boolean          @default(false)
+  isDemoData           Boolean          @default(false)
+  status               ConnectionStatus @default(PENDING)
+  detectedVersion      String?
+  approvedVersion      String?
+  maxRequestsPerSecond Int              @default(5)
+  syncScheduleCron     String           @default("0 2 * * *")
+  syncScheduleEnabled  Boolean          @default(false)
+  notes                String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  installation            MailWizzInstallation          @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  credentials             MailWizzConnectionCredential[]
+  health                  MailWizzConnectionHealth?
+  syncState               ConnectionSyncState?
+  capabilityReports       ConnectionCapabilityReport[]
+  capabilityChecks        ApiCapabilityCheck[]
+  mailingLists            MailingList[]
+  listSegments            ListSegment[]
+  subscribers             Subscriber[]
+  campaigns               Campaign[]
+  engagementEvents        EngagementEvent[]
+  syncJobs                SyncJob[]
+  auditLogs               AuditLog[]
+  cleanupOperations       CleanupOperation[]
+  cleanupOperationRecords CleanupOperationRecord[]
+  reengagementPlans       ReengagementPlan[]
+
+  @@index([installationId])
+  @@index([status, isEnabled])
+}
+
+model MailWizzConnectionCredential {
+  id                   String           @id @default(cuid())
+  customerConnectionId String
+  apiKeyEnc            String
+  apiKeyLast4          String
+  apiKeyFingerprint    String
+  status               CredentialStatus @default(ACTIVE)
+  isActive             Boolean          @default(true)
+  version              Int              @default(1)
+  rotatedFromId        String?
+  revokedReason        String?
+  createdByEmail       String
+  createdAt            DateTime         @default(now())
+  rotatedAt            DateTime?
+  revokedAt            DateTime?
+  lastUsedAt           DateTime?
+
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+
+  @@index([customerConnectionId, isActive, status])
+  @@index([apiKeyFingerprint])
+}
+
+model MailWizzConnectionHealth {
+  id                   String   @id @default(cuid())
+  customerConnectionId String   @unique
+  lastCheckedAt        DateTime?
+  lastSuccessAt        DateTime?
+  lastErrorAt          DateTime?
+  lastStatusCode       Int?
+  lastLatencyMs        Int?
+  lastEndpointTested   String?
+  lastErrorSafe        String?
+  detectedVersion      String?
+  verifiedAuthMode     String?
+  consecutiveFailures  Int      @default(0)
+  totalRequestsCount   Int      @default(0)
+  totalErrorsCount     Int      @default(0)
+  updatedAt            DateTime @updatedAt
+
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+}
+
+model ConnectionSyncState {
+  id                      String    @id @default(cuid())
+  customerConnectionId    String    @unique
+  isPaused                Boolean   @default(false)
+  pauseReason             String?
+  pausedByEmail           String?
+  pausedAt                DateTime?
+  lastFullSyncStartedAt   DateTime?
+  lastFullSyncCompletedAt DateTime?
+  lastSyncJobId           String?
+  lastSyncStatus          String?
+  lastSyncErrorSafe       String?
+  totalListsSynced        Int       @default(0)
+  totalSubscribersSynced  Int       @default(0)
+  totalCampaignsSynced    Int       @default(0)
+  activeWorkerCount       Int       @default(0)
+  updatedAt               DateTime  @updatedAt
+
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+}
+
+model ConnectionCapabilityReport {
+  id                    String    @id @default(cuid())
+  customerConnectionId  String
+  detectedVersion       String?
+  adapterMode           String
+  overallStatus         String
+  readOnlySafe          Boolean   @default(true)
+  autoCleanupAllowed    Boolean   @default(false)
+  mutationSafetyAllowed Boolean   @default(false)
+  mutationLockReason    String?
+  approvedVersion       String?
+  approvedByEmail       String?
+  approvedAt            DateTime?
+  warningsJson          Json      @default("[]")
+  reportJson            Json      @default("{}")
+  checkedAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+
+  @@index([customerConnectionId, checkedAt])
+}
+
 model MailingList {
   id                    String               @id @default(cuid())
-  listUid               String               @unique
+  customerConnectionId  String
+  listUid               String
   name                  String
   displayName           String?
   description           String?
@@ -266,16 +432,21 @@ model MailingList {
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 
-  subscribers       Subscriber[]
-  segments          ListSegment[]
-  campaigns         Campaign[]
-  engagementEvents  EngagementEvent[]
-  cleanupOperations CleanupOperation[]
-  reengagementPlans ReengagementPlan[]
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  subscribers        Subscriber[]
+  segments           ListSegment[]
+  campaigns          Campaign[]
+  engagementEvents   EngagementEvent[]
+  cleanupOperations  CleanupOperation[]
+  reengagementPlans  ReengagementPlan[]
+
+  @@unique([customerConnectionId, listUid])
+  @@index([customerConnectionId])
 }
 
 model ListSegment {
   id                     String   @id @default(cuid())
+  customerConnectionId   String
   mailingListId          String
   segmentUid             String
   name                   String
@@ -288,10 +459,12 @@ model ListSegment {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  mailingList MailingList         @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
-  memberships SegmentMembership[]
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  mailingList        MailingList                @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+  memberships        SegmentMembership[]
 
   @@unique([mailingListId, segmentUid])
+  @@index([customerConnectionId, mailingListId])
 }
 
 model SegmentMembership {
@@ -308,6 +481,7 @@ model SegmentMembership {
 
 model Subscriber {
   id                     String           @id @default(cuid())
+  customerConnectionId   String
   mailingListId          String
   subscriberUid          String
   email                  String
@@ -358,12 +532,16 @@ model Subscriber {
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
 
-  mailingList        MailingList              @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  mailingList        MailingList                @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
   engagementEvents   EngagementEvent[]
   segmentMemberships SegmentMembership[]
   cleanupRecords     CleanupOperationRecord[]
 
   @@unique([mailingListId, subscriberUid])
+  @@unique([customerConnectionId, mailingListId, subscriberUid])
+  @@index([customerConnectionId, hygieneStatus])
+  @@index([customerConnectionId, emailHash])
   @@index([mailingListId, hygieneStatus])
   @@index([mailingListId, engagementStatus])
   @@index([mailingListId, isSuppressed])
@@ -374,7 +552,8 @@ model Subscriber {
 
 model Campaign {
   id                       String               @id @default(cuid())
-  campaignUid              String               @unique
+  customerConnectionId     String
+  campaignUid              String
   campaignIdMailwizz       String?
   mailingListId            String?
   listUid                  String?
@@ -419,31 +598,37 @@ model Campaign {
   createdAt                DateTime             @default(now())
   updatedAt                DateTime             @updatedAt
 
-  mailingList      MailingList?      @relation(fields: [mailingListId], references: [id], onDelete: SetNull)
-  engagementEvents EngagementEvent[]
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  mailingList        MailingList?               @relation(fields: [mailingListId], references: [id], onDelete: SetNull)
+  engagementEvents   EngagementEvent[]
 
+  @@unique([customerConnectionId, campaignUid])
+  @@index([customerConnectionId, sendAt])
   @@index([mailingListId, sendAt])
   @@index([status])
 }
 
 model EngagementEvent {
-  id            String              @id @default(cuid())
-  subscriberId  String
-  campaignId    String?
-  mailingListId String
-  eventType     EngagementEventType
-  source        EventSource
-  occurredAt    DateTime
-  isHistorical  Boolean             @default(true)
-  isDemoData    Boolean             @default(false)
-  metadataJson  Json?
-  dedupeKey     String              @unique
-  createdAt     DateTime            @default(now())
+  id                   String              @id @default(cuid())
+  customerConnectionId String
+  subscriberId         String
+  campaignId           String?
+  mailingListId        String
+  eventType            EngagementEventType
+  source               EventSource
+  occurredAt           DateTime
+  isHistorical         Boolean             @default(true)
+  isDemoData           Boolean             @default(false)
+  metadataJson         Json?
+  dedupeKey            String              @unique
+  createdAt            DateTime            @default(now())
 
-  subscriber  Subscriber  @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
-  campaign    Campaign?   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  mailingList MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  subscriber         Subscriber                 @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  campaign           Campaign?                  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  mailingList        MailingList                @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
 
+  @@index([customerConnectionId, subscriberId, occurredAt])
   @@index([subscriberId, eventType, occurredAt])
   @@index([campaignId, eventType])
   @@index([mailingListId, occurredAt])
@@ -451,58 +636,74 @@ model EngagementEvent {
 }
 
 model SyncJob {
-  id              String    @id @default(cuid())
-  type            JobType
-  status          JobStatus @default(PENDING)
-  payloadJson     Json      @default("{}")
-  resultJson      Json?
-  progressCurrent Int       @default(0)
-  progressTotal   Int       @default(0)
-  progressMessage String?
-  attempts        Int       @default(0)
-  maxAttempts     Int       @default(3)
-  runAt           DateTime  @default(now())
-  startedAt       DateTime?
-  finishedAt      DateTime?
-  heartbeatAt     DateTime?
-  lockedBy        String?
-  pauseRequested  Boolean   @default(false)
-  cancelRequested Boolean   @default(false)
-  lastError       String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                   String    @id @default(cuid())
+  customerConnectionId String?
+  credentialVersion    Int?
+  type                 JobType
+  status               JobStatus @default(PENDING)
+  payloadJson          Json      @default("{}")
+  resultJson           Json?
+  progressCurrent      Int       @default(0)
+  progressTotal        Int       @default(0)
+  progressMessage      String?
+  attempts             Int       @default(0)
+  maxAttempts          Int       @default(3)
+  runAt                DateTime  @default(now())
+  startedAt            DateTime?
+  finishedAt           DateTime?
+  heartbeatAt          DateTime?
+  lockedBy             String?
+  pauseRequested       Boolean   @default(false)
+  cancelRequested      Boolean   @default(false)
+  lastError            String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
+  customerConnection MailWizzCustomerConnection? @relation(fields: [customerConnectionId], references: [id], onDelete: SetNull)
+
+  @@index([customerConnectionId, status, runAt])
   @@index([status, runAt])
 }
 
 model AuditLog {
-  id           String   @id @default(cuid())
-  actorEmail   String
-  action       String
-  resourceType String
-  resourceId   String?
-  outcome      String
-  ipAddress    String?
-  detailsJson  Json     @default("{}")
-  createdAt    DateTime @default(now())
+  id                   String   @id @default(cuid())
+  customerConnectionId String?
+  actorEmail           String
+  action               String
+  resourceType         String
+  resourceId           String?
+  outcome              String
+  ipAddress            String?
+  detailsJson          Json     @default("{}")
+  createdAt            DateTime @default(now())
 
+  customerConnection MailWizzCustomerConnection? @relation(fields: [customerConnectionId], references: [id], onDelete: SetNull)
+
+  @@index([customerConnectionId, createdAt])
   @@index([createdAt])
   @@index([action])
 }
 
 model ApiCapabilityCheck {
-  id                String           @id @default(cuid())
-  capabilityKey     String           @unique
-  category          String
-  endpointOrFeature String
-  status            CapabilityStatus
-  notes             String
-  checkedAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  id                   String           @id @default(cuid())
+  customerConnectionId String
+  capabilityKey        String
+  category             String
+  endpointOrFeature    String
+  status               CapabilityStatus
+  notes                String
+  checkedAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+
+  @@unique([customerConnectionId, capabilityKey])
+  @@index([customerConnectionId, category])
 }
 
 model CleanupOperation {
   id                        String                 @id @default(cuid())
+  customerConnectionId      String
   operationKey              String                 @unique
   actionType                CleanupActionType
   mailingListId             String?
@@ -541,45 +742,51 @@ model CleanupOperation {
   updatedAt                 DateTime               @updatedAt
   completedAt               DateTime?
 
-  mailingList MailingList?             @relation(fields: [mailingListId], references: [id], onDelete: SetNull)
-  records     CleanupOperationRecord[]
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  mailingList        MailingList?               @relation(fields: [mailingListId], references: [id], onDelete: SetNull)
+  records            CleanupOperationRecord[]
 
+  @@index([customerConnectionId, status, createdAt])
   @@index([status, createdAt])
   @@index([mailingListId])
 }
 
 model CleanupOperationRecord {
-  id                 String               @id @default(cuid())
-  operationId        String
-  idempotencyKey     String               @unique
-  subscriberId       String?
-  subscriberUid      String
-  mailingListUid     String
-  emailHash          String
-  maskedEmail        String
-  previousStatus     SubscriberStatus
-  previousSuppressed Boolean              @default(false)
-  previousEngagement EngagementClass
-  intendedAction     CleanupActionType
-  outcome            CleanupRecordOutcome @default(PENDING)
-  attemptCount       Int                  @default(0)
-  remoteStatusBefore String?
-  remoteStatusAfter  String?
-  reason             String?
-  errorMessage       String?
-  processedAt        DateTime?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  id                   String               @id @default(cuid())
+  customerConnectionId String
+  operationId          String
+  idempotencyKey       String               @unique
+  subscriberId         String?
+  subscriberUid        String
+  mailingListUid       String
+  emailHash            String
+  maskedEmail          String
+  previousStatus       SubscriberStatus
+  previousSuppressed   Boolean              @default(false)
+  previousEngagement   EngagementClass
+  intendedAction       CleanupActionType
+  outcome              CleanupRecordOutcome @default(PENDING)
+  attemptCount         Int                  @default(0)
+  remoteStatusBefore   String?
+  remoteStatusAfter    String?
+  reason               String?
+  errorMessage         String?
+  processedAt          DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
-  operation  CleanupOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
-  subscriber Subscriber?      @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  operation          CleanupOperation           @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  subscriber         Subscriber?                @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
 
+  @@index([customerConnectionId, subscriberId])
   @@index([operationId, outcome])
   @@index([subscriberId])
 }
 
 model ReengagementPlan {
   id                        String             @id @default(cuid())
+  customerConnectionId      String
   name                      String
   mailingListId             String
   filterSpecJson            Json               @default("{}")
@@ -605,8 +812,10 @@ model ReengagementPlan {
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
 
-  mailingList MailingList @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
+  customerConnection MailWizzCustomerConnection @relation(fields: [customerConnectionId], references: [id], onDelete: Cascade)
+  mailingList        MailingList                @relation(fields: [mailingListId], references: [id], onDelete: Cascade)
 
+  @@index([customerConnectionId, mailingListId, status])
   @@index([mailingListId, status])
 }
 

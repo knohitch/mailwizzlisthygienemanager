@@ -12,15 +12,19 @@ export default async function ReportsPage() {
   const session = await getServerSession();
   if (!session) redirect('/login');
 
-  const [cfg, lists, summary] = await Promise.all([
+  const [cfg, connections, lists, summary] = await Promise.all([
     prisma.appConfig.upsert({
       where: { id: 'default' },
       update: {},
       create: { id: 'default' },
     }),
+    prisma.mailWizzCustomerConnection.findMany({
+      orderBy: [{ isPrimary: 'desc' }, { customerName: 'asc' }],
+      select: { id: true, customerName: true, customerSlug: true },
+    }),
     prisma.mailingList.findMany({
       orderBy: { name: 'asc' },
-      select: { id: true, name: true },
+      select: { id: true, name: true, customerConnectionId: true },
     }),
     generateAllReportsSummary(),
   ]);
@@ -31,6 +35,7 @@ export default async function ReportsPage() {
       csrfToken={deriveCsrfToken(session)}
       isDemoMode={cfg.isDemoMode}
       phase1ReadOnly={!isMailWizzMutationsEnabled()}
+      connections={connections}
       lists={lists}
       initialSummary={summary}
     />

@@ -12,8 +12,30 @@ export type HygieneReportType =
   | 'BEFORE_AFTER_COMPARISON'
   | 'DATA_QUALITY';
 
-export async function generateAllReportsSummary(mailingListId?: string) {
-  const whereList = mailingListId ? { mailingListId } : {};
+export async function generateAllReportsSummary(
+  mailingListId?: string,
+  customerConnectionId?: string
+) {
+  let connId = customerConnectionId?.trim() || undefined;
+  if (mailingListId) {
+    const ml = await prisma.mailingList.findUnique({
+      where: { id: mailingListId },
+      select: { id: true, customerConnectionId: true },
+    });
+    if (ml) {
+      if (connId && ml.customerConnectionId !== connId) {
+        throw new Error(
+          `Cross-customer report blocked: mailing list "${mailingListId}" does not belong to customer "${connId}".`
+        );
+      }
+      connId = ml.customerConnectionId;
+    }
+  }
+
+  const whereList = {
+    ...(mailingListId ? { mailingListId } : {}),
+    ...(connId ? { customerConnectionId: connId } : {}),
+  };
 
   const [
     totalSubscribers,
@@ -71,19 +93,22 @@ export async function generateAllReportsSummary(mailingListId?: string) {
       },
     }),
     prisma.reengagementPlan.findMany({
-      where: mailingListId ? { mailingListId } : {},
+      where: whereList,
       orderBy: { createdAt: 'desc' },
       take: 25,
       include: { mailingList: { select: { name: true, listUid: true } } },
     }),
     prisma.cleanupOperation.findMany({
-      where: mailingListId ? { mailingListId } : {},
+      where: whereList,
       orderBy: { createdAt: 'desc' },
       take: 25,
       include: { mailingList: { select: { name: true, listUid: true } } },
     }),
     prisma.mailingList.findMany({
-      where: mailingListId ? { id: mailingListId } : {},
+      where: {
+        ...(mailingListId ? { id: mailingListId } : {}),
+        ...(connId ? { customerConnectionId: connId } : {}),
+      },
       select: {
         id: true,
         listUid: true,
@@ -214,17 +239,50 @@ export async function generateAllReportsSummary(mailingListId?: string) {
 
 export async function generateReportCsv(params: {
   reportType: HygieneReportType;
+  customerConnectionId?: string;
   mailingListId?: string;
   maskContacts?: boolean;
 }): Promise<{ filename: string; csv: string; rowCount: number }> {
   const mask = params.maskContacts ?? false;
-  const whereList = params.mailingListId ? { mailingListId: params.mailingListId } : {};
+  let connId = params.customerConnectionId?.trim() || undefined;
+  if (params.mailingListId) {
+    const ml = await prisma.mailingList.findUnique({
+      where: { id: params.mailingListId },
+      select: { id: true, customerConnectionId: true },
+    });
+    if (!ml) {
+      throw new Error(`Mailing list "${params.mailingListId}" not found.`);
+    }
+    if (connId && ml.customerConnectionId !== connId) {
+      throw new Error(
+        `Cross-customer CSV export blocked: list "${params.mailingListId}" does not belong to customer "${connId}".`
+      );
+    }
+    connId = ml.customerConnectionId;
+  } else if (!connId) {
+    const activeConns = await prisma.mailWizzCustomerConnection.findMany({
+      where: { isQuarantine: false },
+      select: { id: true },
+      take: 2,
+    });
+    if (activeConns.length > 1) {
+      throw new Error(
+        'Customer connection selection is required for CSV report exports when multiple customer accounts exist.'
+      );
+    }
+    connId = activeConns[0]?.id;
+  }
+
+  const whereList = {
+    ...(params.mailingListId ? { mailingListId: params.mailingListId } : {}),
+    ...(connId ? { customerConnectionId: connId } : {}),
+  };
 
   const esc = sanitizeCsvCell;
 
   if (params.reportType === 'CLEANUP_EXECUTION') {
     const ops = await prisma.cleanupOperation.findMany({
-      where: params.mailingListId ? { mailingListId: params.mailingListId } : {},
+      where: whereList,
       orderBy: { createdAt: 'desc' },
       take: 200,
       include: { mailingList: { select: { name: true } } },
@@ -268,7 +326,7 @@ export async function generateReportCsv(params: {
 
   if (params.reportType === 'REENGAGEMENT') {
     const plans = await prisma.reengagementPlan.findMany({
-      where: params.mailingListId ? { mailingListId: params.mailingListId } : {},
+      where: whereList,
       orderBy: { createdAt: 'desc' },
       include: { mailingList: { select: { name: true } } },
     });

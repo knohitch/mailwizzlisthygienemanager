@@ -89,6 +89,7 @@ export async function createReengagementPlan(input: CreateReengagementPlanInput)
 
   const plan = await prisma.reengagementPlan.create({
     data: {
+      customerConnectionId: list.customerConnectionId,
       name: input.name.trim(),
       mailingListId: list.id,
       filterSpecJson: defaultFilter as unknown as Prisma.InputJsonValue,
@@ -104,6 +105,7 @@ export async function createReengagementPlan(input: CreateReengagementPlanInput)
   });
 
   await recordAuditLog({
+    customerConnectionId: list.customerConnectionId,
     actorEmail: input.actorEmail,
     action: 'REENGAGEMENT_PLAN_CREATED',
     resourceType: 'ReengagementPlan',
@@ -140,7 +142,10 @@ export async function createSegmentForReengagementPlan(params: {
     );
   }
 
-  const { client } = await createConfiguredMutationClient('CREATE_SEGMENT');
+  const { client } = await createConfiguredMutationClient(
+    'CREATE_SEGMENT',
+    plan.customerConnectionId
+  );
   const res = await client.createOrUpdateSegment({
     listUid: plan.mailingList.listUid,
     segmentUid: plan.segmentUid ?? undefined,
@@ -299,12 +304,13 @@ export async function evaluateReengagementPlan(params: {
         suppressedAt: null,
       },
     });
-    await recomputeAllHygieneClassifications(plan.mailingListId);
+    await recomputeAllHygieneClassifications(plan.mailingListId, plan.customerConnectionId);
   }
 
   let suppressionOpId: string | null = null;
   if (params.createSuppressionDryRun && persistentlyInactiveIds.length > 0) {
     const op = await previewCleanupOperation({
+      customerConnectionId: plan.customerConnectionId,
       actionType: 'SUPPRESS',
       mailingListId: plan.mailingListId,
       explicitSubscriberIds: persistentlyInactiveIds,

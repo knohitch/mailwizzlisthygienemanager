@@ -5,6 +5,7 @@ import { recordAuditLog } from './audit';
 import type { HygieneStatus, SubscriberStatus } from '@prisma/client';
 
 export interface ExportSubscribersOptions {
+  customerConnectionId?: string;
   mailingListId?: string;
   hygieneStatus?: HygieneStatus;
   status?: SubscriberStatus;
@@ -22,8 +23,38 @@ export async function generateSubscriberExport(options: ExportSubscribersOptions
   body: Buffer;
   rowCount: number;
 }> {
+  let connId = options.customerConnectionId?.trim() || undefined;
+  if (options.mailingListId) {
+    const ml = await prisma.mailingList.findUnique({
+      where: { id: options.mailingListId },
+      select: { id: true, customerConnectionId: true },
+    });
+    if (!ml) {
+      throw new Error(`Mailing list "${options.mailingListId}" not found.`);
+    }
+    if (connId && ml.customerConnectionId !== connId) {
+      throw new Error(
+        `Cross-customer export blocked: mailing list "${options.mailingListId}" does not belong to customerConnectionId "${connId}".`
+      );
+    }
+    connId = ml.customerConnectionId;
+  } else if (!connId) {
+    const activeConns = await prisma.mailWizzCustomerConnection.findMany({
+      where: { isQuarantine: false },
+      select: { id: true },
+      take: 2,
+    });
+    if (activeConns.length > 1) {
+      throw new Error(
+        'Customer connection selection is required for subscriber export when multiple customer accounts exist.'
+      );
+    }
+    connId = activeConns[0]?.id;
+  }
+
   const subscribers = await prisma.subscriber.findMany({
     where: {
+      ...(connId ? { customerConnectionId: connId } : {}),
       ...(options.mailingListId ? { mailingListId: options.mailingListId } : {}),
       ...(options.hygieneStatus ? { hygieneStatus: options.hygieneStatus } : {}),
       ...(options.status ? { status: options.status } : {}),

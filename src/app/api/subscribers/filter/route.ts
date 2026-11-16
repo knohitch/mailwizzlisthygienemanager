@@ -11,6 +11,7 @@ import { recordAuditLog } from '@/services/security/audit';
 
 const FilterRequestSchema = z.object({
   filter: FilterGroupSchema,
+  customerConnectionId: z.string().trim().optional(),
   mailingListId: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(25),
@@ -18,6 +19,7 @@ const FilterRequestSchema = z.object({
 
 const ProtectionUpdateSchema = z.object({
   subscriberId: z.string().min(1),
+  customerConnectionId: z.string().trim().optional(),
   isVip: z.boolean().optional(),
   hasPaidRelationship: z.boolean().optional(),
   protectionNote: z.string().max(300).optional().nullable(),
@@ -48,6 +50,7 @@ export async function POST(req: NextRequest) {
 
   const result = await queryFilteredSubscribers({
     filter: parsed.data.filter,
+    customerConnectionId: parsed.data.customerConnectionId,
     mailingListId: parsed.data.mailingListId,
     page: parsed.data.page,
     pageSize: parsed.data.pageSize,
@@ -60,6 +63,7 @@ export async function POST(req: NextRequest) {
     byEngagementStatus: result.byEngagementStatus,
     subscribers: result.subscribers.map((s) => ({
       id: s.id,
+      customerConnectionId: s.customerConnectionId,
       subscriberUid: s.subscriberUid,
       mailingListId: s.mailingListId,
       listName: s.mailingList.name,
@@ -117,6 +121,22 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
+  if (parsed.data.customerConnectionId) {
+    const existing = await prisma.subscriber.findUnique({
+      where: { id: parsed.data.subscriberId },
+      select: { customerConnectionId: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: 'Subscriber not found.' }, { status: 404 });
+    }
+    if (existing.customerConnectionId !== parsed.data.customerConnectionId) {
+      return NextResponse.json(
+        { error: 'Subscriber does not belong to the specified customer connection.' },
+        { status: 403 }
+      );
+    }
+  }
+
   const updated = await prisma.subscriber.update({
     where: { id: parsed.data.subscriberId },
     data: {
@@ -130,9 +150,13 @@ export async function PATCH(req: NextRequest) {
     },
   });
 
-  await recomputeAllHygieneClassifications(updated.mailingListId);
+  await recomputeAllHygieneClassifications(
+    updated.mailingListId,
+    updated.customerConnectionId
+  );
 
   await recordAuditLog({
+    customerConnectionId: updated.customerConnectionId,
     actorEmail: auth.session.adminEmail,
     action: 'UPDATE_SUBSCRIBER_PROTECTION',
     resourceType: 'Subscriber',

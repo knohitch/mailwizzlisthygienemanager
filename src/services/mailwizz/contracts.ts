@@ -338,6 +338,7 @@ export interface HistoricalEngagementSourceAdapter {
 }
 
 export interface CompatibilityReport {
+  customerConnectionId?: string | null;
   overallStatus: CompatibilityVerdict;
   adapterInUse: string;
   adapterMode: 'VERIFIED_NATIVE' | 'PROVISIONAL_COMPAT_READONLY' | 'RESTRICTED_SAFE_MODE';

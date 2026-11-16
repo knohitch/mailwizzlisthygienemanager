@@ -102,9 +102,10 @@ export async function executeCleanupOperation(params: {
     const remoteOp = op.actionType as RemoteMutationOperation;
     await assertCompatibilityPermitsRemoteMutations(remoteOp, {
       requireConnectedReport: !client,
+      customerConnectionId: op.customerConnectionId,
     });
     if (!client) {
-      const configured = await createConfiguredMutationClient(remoteOp);
+      const configured = await createConfiguredMutationClient(remoteOp, op.customerConnectionId);
       client = configured.client;
     }
   }
@@ -150,7 +151,12 @@ export async function executeCleanupOperation(params: {
       data: { targetListUid: created.listUid },
     });
     await prisma.mailingList.upsert({
-      where: { listUid: created.listUid },
+      where: {
+        customerConnectionId_listUid: {
+          customerConnectionId: op.customerConnectionId,
+          listUid: created.listUid,
+        },
+      },
       update: {
         name: listCfg?.name ?? op.targetListName ?? 'Clean Segment List',
         fromName,
@@ -161,6 +167,7 @@ export async function executeCleanupOperation(params: {
         lastSyncedAt: new Date(),
       },
       create: {
+        customerConnectionId: op.customerConnectionId,
         listUid: created.listUid,
         name: listCfg?.name ?? op.targetListName ?? 'Clean Segment List',
         fromName,
@@ -197,6 +204,7 @@ export async function executeCleanupOperation(params: {
         lastSyncedAt: new Date(),
       },
       create: {
+        customerConnectionId: op.customerConnectionId,
         mailingListId: op.mailingList.id,
         segmentUid: segRes.segmentUid,
         name: op.targetSegmentName ?? 'Hygiene Segment',

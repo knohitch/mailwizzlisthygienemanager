@@ -11,10 +11,14 @@ export interface ListReconciliationResult {
 }
 
 export async function reconcileListsAndCampaigns(
-  mailingListId?: string
+  mailingListId?: string,
+  customerConnectionId?: string
 ): Promise<ListReconciliationResult[]> {
   const lists = await prisma.mailingList.findMany({
-    where: mailingListId ? { id: mailingListId } : undefined,
+    where: {
+      ...(mailingListId ? { id: mailingListId } : {}),
+      ...(customerConnectionId ? { customerConnectionId } : {}),
+    },
   });
 
   const results: ListReconciliationResult[] = [];
@@ -91,7 +95,10 @@ export async function reconcileListsAndCampaigns(
 
   // Reconcile campaign stats bounces vs synced bounce log rows
   const campaigns = await prisma.campaign.findMany({
-    where: mailingListId ? { mailingListId } : undefined,
+    where: {
+      ...(mailingListId ? { mailingListId } : {}),
+      ...(customerConnectionId ? { customerConnectionId } : {}),
+    },
   });
 
   for (const camp of campaigns) {

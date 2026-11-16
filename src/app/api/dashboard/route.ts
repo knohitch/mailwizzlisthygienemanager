@@ -8,10 +8,15 @@ export async function GET(req: NextRequest) {
 
   const periodParam = Number(req.nextUrl.searchParams.get('periodDays'));
   const listId = req.nextUrl.searchParams.get('listId') || undefined;
+  const customerConnectionId =
+    req.nextUrl.searchParams.get('customerConnectionId')?.trim() ||
+    req.nextUrl.searchParams.get('connectionId')?.trim() ||
+    undefined;
 
   const summary = await getDashboardSummary({
     periodDays: Number.isFinite(periodParam) ? periodParam : undefined,
     listId,
+    customerConnectionId,
   });
 
   return NextResponse.json(summary);

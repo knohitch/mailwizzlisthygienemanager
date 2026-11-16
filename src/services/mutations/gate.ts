@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { decryptSecret } from '@/services/security/crypto';
+import { resolveUnambiguousConnectionId } from '@/services/mailwizz/client-factory';
 import { recordAuditLog } from '@/services/security/audit';
 import {
   isMailWizzMutationsEnabled,
@@ -102,16 +103,44 @@ export function assertOperationCapabilitiesInReport(
  */
 export async function assertCompatibilityPermitsRemoteMutations(
   operation?: RemoteMutationOperation,
-  options?: { requireConnectedReport?: boolean }
+  options?: { requireConnectedReport?: boolean; customerConnectionId?: string }
 ): Promise<void> {
   if (!isMailWizzMutationsEnabled()) {
     throw new MutationGateLockedError(operation ?? 'REMOTE_MUTATION');
   }
 
+  let connId: string | undefined = options?.customerConnectionId?.trim() || undefined;
+  if (!connId) {
+    const activeConns = await prisma.mailWizzCustomerConnection.findMany({
+      where: { isQuarantine: false },
+      select: { id: true },
+      take: 2,
+    });
+    if (activeConns.length === 1) {
+      connId = activeConns[0].id;
+    } else if (activeConns.length > 1) {
+      throw new UnsafeOperationBlockedError(
+        `Remote ${operation ?? 'mutation'} blocked fail-closed: multiple customer connections exist; explicit customerConnectionId is required.`
+      );
+    }
+  }
+
+  if (connId) {
+    const conn = await prisma.mailWizzCustomerConnection.findUnique({
+      where: { id: connId },
+      select: { id: true, isEnabled: true, isQuarantine: true, status: true, customerName: true },
+    });
+    if (!conn || conn.isQuarantine || !conn.isEnabled || conn.status === 'DISABLED') {
+      throw new UnsafeOperationBlockedError(
+        `Remote ${operation ?? 'mutation'} blocked fail-closed: customer connection "${conn?.customerName ?? connId}" is disabled or quarantined.`
+      );
+    }
+  }
+
   const [cfg, compatCfg, latestReport] = await Promise.all([
     prisma.appConfig.findUnique({ where: { id: 'default' } }),
-    mailWizzCapabilityRegistry.loadCompatibilityConfig(),
-    mailWizzCapabilityRegistry.loadLatestCompatibilityReport(),
+    mailWizzCapabilityRegistry.loadCompatibilityConfig(connId),
+    mailWizzCapabilityRegistry.loadLatestCompatibilityReport(connId),
   ]);
 
   if (latestReport && latestReport.connectionStatus !== 'NOT_CONFIGURED') {
@@ -159,12 +188,21 @@ export async function assertCompatibilityPermitsRemoteMutations(
     );
   }
 
+  const connVersion = connId
+    ? (
+        await prisma.mailWizzCustomerConnection.findUnique({
+          where: { id: connId },
+          select: { detectedVersion: true },
+        })
+      )?.detectedVersion
+    : null;
+
   const detectedOrConfigured =
-    cfg?.mailwizzDetectedVersion ?? compatCfg.configuredVersion;
+    connVersion ?? cfg?.mailwizzDetectedVersion ?? compatCfg.configuredVersion;
   if (detectedOrConfigured) {
     const versionInfo = mailWizzVersionDetector.resolveVersionInfo({
       configuredVersion: compatCfg.configuredVersion,
-      detectedVersion: cfg?.mailwizzDetectedVersion ?? null,
+      detectedVersion: connVersion ?? cfg?.mailwizzDetectedVersion ?? null,
       approvedVersion: compatCfg.approvedVersion,
     });
     const resolved = mailWizzFutureAdapterResolver.resolve({
@@ -186,42 +224,72 @@ export async function assertCompatibilityPermitsRemoteMutations(
 }
 
 export async function createConfiguredMutationClient(
-  operation?: RemoteMutationOperation
+  operation?: RemoteMutationOperation,
+  customerConnectionId?: string
 ): Promise<{
   client: MailWizzMutationClient;
   batchSize: number;
+  customerConnectionId: string;
 }> {
+  const connId = await resolveUnambiguousConnectionId(customerConnectionId);
   await assertCompatibilityPermitsRemoteMutations(operation, {
     requireConnectedReport: true,
+    customerConnectionId: connId,
   });
 
   const env = getEnv();
-  const cfg = await prisma.appConfig.upsert({
-    where: { id: 'default' },
-    update: {},
-    create: { id: 'default' },
-  });
+  const [cfg, conn] = await Promise.all([
+    prisma.appConfig.upsert({
+      where: { id: 'default' },
+      update: {},
+      create: { id: 'default' },
+    }),
+    prisma.mailWizzCustomerConnection.findUnique({
+      where: { id: connId },
+      include: {
+        installation: true,
+        credentials: {
+          where: { isActive: true, status: 'ACTIVE' },
+          orderBy: { version: 'desc' },
+          take: 1,
+        },
+      },
+    }),
+  ]);
 
-  const apiUrl = cfg.mailwizzApiUrl || env.MAILWIZZ_API_URL;
-  const apiKey = cfg.mailwizzApiKeyEnc
-    ? decryptSecret(cfg.mailwizzApiKeyEnc)
-    : env.MAILWIZZ_API_KEY;
+  if (
+    !conn ||
+    conn.isQuarantine ||
+    !conn.isEnabled ||
+    conn.status === 'DISABLED' ||
+    !conn.installation.isActive
+  ) {
+    throw new Error(`Customer connection "${connId}" is disabled or unavailable.`);
+  }
 
-  if (!apiUrl || !apiKey) {
+  const activeCred = conn.credentials[0];
+  if (!activeCred) {
     throw new Error(
-      'MailWizz API URL and API key are not configured yet. Configure them in Settings before running remote MailWizz operations.'
+      `Customer connection "${conn.customerName}" has no active API credential.`
     );
   }
+
+  const apiUrl = conn.installation.baseUrl;
+  const apiKey = decryptSecret(activeCred.apiKeyEnc);
 
   return {
     client: new MailWizzMutationClient({
       apiUrl,
       apiKey,
-      authMode: (cfg.mailwizzAuthMode as MailWizzAuthMode) || 'auto',
-      maxRequestsPerSecond: Math.min(5, cfg.maxApiRequestsPerSecond),
-      allowInsecureHttp: env.ALLOW_INSECURE_MAILWIZZ_HTTP === true,
+      authMode: (conn.authMode as MailWizzAuthMode) || 'auto',
+      maxRequestsPerSecond: Math.min(5, conn.maxRequestsPerSecond),
+      allowInsecureHttp:
+        env.ALLOW_INSECURE_MAILWIZZ_HTTP === true ||
+        apiUrl.startsWith('http://127.0.0.1') ||
+        apiUrl.startsWith('http://localhost'),
     }),
     batchSize: Math.min(50, Math.max(5, cfg.batchSize)),
+    customerConnectionId: conn.id,
   };
 }
 

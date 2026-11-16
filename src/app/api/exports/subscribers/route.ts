@@ -13,6 +13,10 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const format = sp.get('format') === 'json' ? 'json' : 'csv';
   const encrypted = sp.get('encrypted') !== 'false'; // encrypted by default!
+  const customerConnectionId =
+    sp.get('customerConnectionId')?.trim() ||
+    sp.get('connectionId')?.trim() ||
+    undefined;
   const mailingListId = sp.get('listId')?.trim() || undefined;
   const hygieneStatus = (sp.get('hygieneStatus')?.trim() || undefined) as
     | HygieneStatus
@@ -22,6 +26,7 @@ export async function GET(req: NextRequest) {
     | undefined;
 
   const exported = await generateSubscriberExport({
+    customerConnectionId,
     mailingListId,
     hygieneStatus,
     status,

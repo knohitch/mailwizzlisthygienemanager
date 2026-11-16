@@ -16,13 +16,19 @@ export class VerifiedExportHistoricalAdapter implements HistoricalEngagementSour
   readonly id = 'historical-verified-export-adapter';
   readonly sourceKind = 'VERIFIED_EXPORT' as const;
 
+  constructor(private readonly customerConnectionId?: string) {}
+
   async checkAvailability(): Promise<{
     available: boolean;
     readOnlyVerified: boolean;
     details: string;
   }> {
     const count = await prisma.engagementEvent.count({
-      where: { source: 'VERIFIED_EXPORT', isDemoData: false },
+      where: {
+        source: 'VERIFIED_EXPORT',
+        isDemoData: false,
+        ...(this.customerConnectionId ? { customerConnectionId: this.customerConnectionId } : {}),
+      },
     });
     return {
       available: true,
@@ -85,21 +91,25 @@ export class ReadOnlyReportingDbHistoricalAdapter implements HistoricalEngagemen
 }
 
 export async function inspectHistoricalSources(params: {
+  customerConnectionId?: string;
   reportingDbUri?: string | null;
   reportingDbPrefix?: string;
   nativeActivityApiSupported: boolean;
 }): Promise<HistoricalSourcesSummary> {
+  const connFilter = params.customerConnectionId
+    ? { customerConnectionId: params.customerConnectionId }
+    : {};
   const [exportCheck, reportingCheck, exportCount, webhookCount] = await Promise.all([
-    new VerifiedExportHistoricalAdapter().checkAvailability(),
+    new VerifiedExportHistoricalAdapter(params.customerConnectionId).checkAvailability(),
     new ReadOnlyReportingDbHistoricalAdapter(
       params.reportingDbUri,
       params.reportingDbPrefix ?? 'mw_'
     ).checkAvailability(),
     prisma.engagementEvent.count({
-      where: { source: 'VERIFIED_EXPORT', isDemoData: false },
+      where: { source: 'VERIFIED_EXPORT', isDemoData: false, ...connFilter },
     }),
     prisma.engagementEvent.count({
-      where: { source: 'WEBHOOK_LIVE', isDemoData: false },
+      where: { source: 'WEBHOOK_LIVE', isDemoData: false, ...connFilter },
     }),
   ]);
 

@@ -42,6 +42,8 @@ const BASE_RULES: HygieneRuleConfig = {
 const LIST_A_ID = 'p31_list_a';
 const LIST_B_ID = 'p31_list_b';
 const CAMP_A_ID = 'p31_camp_a';
+const P31_INST_ID = 'p31_test_inst';
+const P31_CONN_ID = 'p31_test_conn';
 
 describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
   beforeAll(async () => {
@@ -59,11 +61,39 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
     });
     await prisma.campaign.deleteMany({ where: { id: CAMP_A_ID } });
     await prisma.mailingList.deleteMany({ where: { id: { in: [LIST_A_ID, LIST_B_ID] } } });
+    await prisma.mailWizzCustomerConnection.deleteMany({ where: { id: P31_CONN_ID } });
+    await prisma.mailWizzInstallation.deleteMany({ where: { id: P31_INST_ID } });
+
+    await prisma.mailWizzInstallation.upsert({
+      where: { id: P31_INST_ID },
+      update: { name: 'Phase31 Test MailWizz', isActive: true },
+      create: {
+        id: P31_INST_ID,
+        name: 'Phase31 Test MailWizz',
+        baseUrl: 'https://p31-mock.example.invalid/api/index.php',
+        hostname: 'p31-mock.example.invalid',
+      },
+    });
+    await prisma.mailWizzCustomerConnection.upsert({
+      where: { id: P31_CONN_ID },
+      update: { isEnabled: true, isQuarantine: false, isDemoData: false, status: 'CONNECTED' },
+      create: {
+        id: P31_CONN_ID,
+        installationId: P31_INST_ID,
+        customerName: 'Phase 3.1 Test Customer',
+        customerSlug: 'p31-test-customer',
+        isEnabled: true,
+        isQuarantine: false,
+        isDemoData: false,
+        status: 'CONNECTED',
+      },
+    });
 
     await prisma.mailingList.createMany({
       data: [
         {
           id: LIST_A_ID,
+          customerConnectionId: P31_CONN_ID,
           listUid: 'p31_uid_a',
           name: 'Phase31 Scope List A',
           optIn: 'single',
@@ -72,6 +102,7 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
         },
         {
           id: LIST_B_ID,
+          customerConnectionId: P31_CONN_ID,
           listUid: 'p31_uid_b',
           name: 'Phase31 Scope List B',
           optIn: 'single',
@@ -84,6 +115,7 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
     await prisma.campaign.create({
       data: {
         id: CAMP_A_ID,
+        customerConnectionId: P31_CONN_ID,
         campaignUid: 'p31_camp_uid_a',
         mailingListId: LIST_A_ID,
         name: 'Phase 3.1 Safety Test Campaign',
@@ -129,6 +161,8 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
     });
     await prisma.campaign.deleteMany({ where: { id: CAMP_A_ID } });
     await prisma.mailingList.deleteMany({ where: { id: { in: [LIST_A_ID, LIST_B_ID] } } });
+    await prisma.mailWizzCustomerConnection.deleteMany({ where: { id: P31_CONN_ID } });
+    await prisma.mailWizzInstallation.deleteMany({ where: { id: P31_INST_ID } });
     await prisma.appConfig.updateMany({
       where: { id: 'default' },
       data: { webhookSecretEnc: null },
@@ -217,6 +251,7 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
       data: [
         {
           id: 'p31_sub_a1',
+          customerConnectionId: P31_CONN_ID,
           subscriberUid: 'p31_suid_a1',
           mailingListId: LIST_A_ID,
           email: '=CMD|calc@example.com',
@@ -233,6 +268,7 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
         },
         {
           id: 'p31_sub_b1',
+          customerConnectionId: P31_CONN_ID,
           subscriberUid: 'p31_suid_b1',
           mailingListId: LIST_B_ID,
           email: 'otherlist@example.com',
@@ -247,6 +283,7 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
         },
         {
           id: 'p31_sub_unsub',
+          customerConnectionId: P31_CONN_ID,
           subscriberUid: 'p31_suid_unsub',
           mailingListId: LIST_A_ID,
           email: 'already.unsub@example.com',
@@ -266,6 +303,7 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
     for (let i = 0; i < 6; i++) {
       await prisma.engagementEvent.create({
         data: {
+          customerConnectionId: P31_CONN_ID,
           subscriberId: 'p31_sub_a1',
           campaignId: CAMP_A_ID,
           mailingListId: LIST_A_ID,
@@ -318,6 +356,7 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
     // 3. Inject a complaint AFTER dry-run preview -> live pre-mutation recheck MUST skip it and NEVER call unsubscribe
     await prisma.engagementEvent.create({
       data: {
+        customerConnectionId: P31_CONN_ID,
         subscriberId: 'p31_sub_a1',
         campaignId: CAMP_A_ID,
         mailingListId: LIST_A_ID,
@@ -342,6 +381,7 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
     try {
       const nowIso = new Date().toISOString();
       await mailWizzCapabilityRegistry.saveCompatibilityReport({
+        customerConnectionId: P31_CONN_ID,
         actorEmail: 'p31-compat-fixture@local.hygiene',
         report: {
           overallStatus: 'FULLY VERIFIED',
@@ -550,24 +590,26 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
 
     // 5. Webhook authenticity (HMAC + replay protection)
     const hookSecret = 'p31-webhook-secret-test-value-9999';
-    await prisma.appConfig.upsert({
-      where: { id: 'default' },
-      update: { webhookSecretEnc: encryptSecret(hookSecret) },
-      create: { id: 'default', webhookSecretEnc: encryptSecret(hookSecret) },
+    await prisma.mailWizzCustomerConnection.update({
+      where: { id: P31_CONN_ID },
+      data: { webhookSecretEnc: encryptSecret(hookSecret) },
     });
 
-    const badReq = new NextRequest('http://127.0.0.1:3000/api/webhooks/mailwizz', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-hygiene-webhook-secret': 'wrong-secret',
-      },
-      body: JSON.stringify({
-        event_type: 'open',
-        campaign_uid: 'p31_camp_uid_a',
-        subscriber_uid: 'p31_suid_a1',
-      }),
-    });
+    const badReq = new NextRequest(
+      `http://127.0.0.1:3000/api/webhooks/mailwizz?connectionId=${P31_CONN_ID}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-hygiene-webhook-secret': 'wrong-secret',
+        },
+        body: JSON.stringify({
+          event_type: 'open',
+          campaign_uid: 'p31_camp_uid_a',
+          subscriber_uid: 'p31_suid_a1',
+        }),
+      }
+    );
     const res401 = await webhookPost(badReq);
     expect(res401.status).toBe(401);
 
@@ -581,14 +623,17 @@ describe('Phase 3.1 Subscriber-Safety & Security Boundary Verification', () => {
     const sig = crypto.createHmac('sha256', hookSecret).update(replayBody).digest('hex');
 
     for (let i = 0; i < 2; i++) {
-      const okReq = new NextRequest('http://127.0.0.1:3000/api/webhooks/mailwizz', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-hygiene-webhook-signature': `sha256=${sig}`,
-        },
-        body: replayBody,
-      });
+      const okReq = new NextRequest(
+        `http://127.0.0.1:3000/api/webhooks/mailwizz?connectionId=${P31_CONN_ID}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hygiene-webhook-signature': `sha256=${sig}`,
+          },
+          body: replayBody,
+        }
+      );
       const r = await webhookPost(okReq);
       expect(r.status).toBe(200);
     }

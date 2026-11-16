@@ -22,10 +22,36 @@ import {
 import { AppShell } from './AppShell';
 import { Badge, Button, Card } from './ui';
 
+interface CustomerAccountSummary {
+  id: string;
+  customerName: string;
+  customerSlug: string;
+  baseUrl: string;
+  hostname: string;
+  status: string;
+  isEnabled: boolean;
+  isQuarantine: boolean;
+  isDemoData: boolean;
+  apiKeyMasked: string | null;
+  detectedVersion: string | null;
+  isPaused: boolean;
+  lastSyncStatus: string | null;
+  lastSyncAt: string | null;
+  lastErrorSafe: string | null;
+  listsCount: number;
+  subscribersCount: number;
+  campaignsCount: number;
+  engagedSubscribersCount: number;
+  inactiveSubscribersCount: number;
+}
+
 interface DashboardData {
+  scope?: 'GLOBAL' | 'CUSTOMER';
+  selectedCustomerConnectionId?: string | null;
   isDemoMode: boolean;
   phase1ReadOnly: boolean;
   connectionConfigured: boolean;
+  customerAccounts?: CustomerAccountSummary[];
   periodDays: number;
   lookbackDays: number;
   minDeliveredCampaigns: number;
@@ -58,6 +84,8 @@ interface DashboardData {
   };
   lists: Array<{
     id: string;
+    customerConnectionId?: string;
+    customerConnection?: { id: string; customerName: string; customerSlug: string; status: string };
     listUid: string;
     name: string;
     syncedSubscriberCount: number;
@@ -171,6 +199,9 @@ export function DashboardView({
 }) {
   const [data, setData] = useState<DashboardData>(initialData);
   const [periodDays, setPeriodDays] = useState<number>(initialData.periodDays || 90);
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string>(
+    initialData.selectedCustomerConnectionId ?? ''
+  );
   const [selectedListId, setSelectedListId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [bannerMsg, setBannerMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(
@@ -179,14 +210,22 @@ export function DashboardView({
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
 
   const refresh = useCallback(
-    async (pDays = periodDays, listId = selectedListId) => {
+    async (
+      pDays = periodDays,
+      listId = selectedListId,
+      connId = selectedConnectionId
+    ) => {
       setLoading(true);
       try {
         const params = new URLSearchParams({ periodDays: String(pDays) });
+        if (connId) params.set('customerConnectionId', connId);
         if (listId) params.set('listId', listId);
+        const auditUrl = connId
+          ? `/api/audit?customerConnectionId=${encodeURIComponent(connId)}`
+          : '/api/audit';
         const [dashRes, auditRes] = await Promise.all([
           fetch(`/api/dashboard?${params.toString()}`),
-          fetch('/api/audit'),
+          fetch(auditUrl),
         ]);
         if (dashRes.ok) {
           setData((await dashRes.json()) as DashboardData);
@@ -199,7 +238,7 @@ export function DashboardView({
         setLoading(false);
       }
     },
-    [periodDays, selectedListId]
+    [periodDays, selectedListId, selectedConnectionId]
   );
 
   useEffect(() => {
@@ -233,7 +272,12 @@ export function DashboardView({
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken,
         },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({
+          action,
+          ...(selectedConnectionId && (action === 'FULL_SYNC' || action === 'ANALYZE_HYGIENE')
+            ? { customerConnectionId: selectedConnectionId }
+            : {}),
+        }),
       });
       const json = (await res.json()) as { error?: string; job?: { id: string } };
       if (!res.ok) {
@@ -303,13 +347,37 @@ export function DashboardView({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {(data.customerAccounts?.length ?? 0) > 0 && (
+              <select
+                aria-label="Filter by customer account"
+                data-testid="dashboard-customer-selector"
+                value={selectedConnectionId}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setSelectedConnectionId(next);
+                  setSelectedListId('');
+                  void refresh(periodDays, '', next);
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800"
+              >
+                <option value="">
+                  Global Overview (All {data.customerAccounts?.length ?? 0} Accounts)
+                </option>
+                {data.customerAccounts?.map((acct) => (
+                  <option key={acct.id} value={acct.id}>
+                    {acct.customerName} ({acct.status})
+                  </option>
+                ))}
+              </select>
+            )}
+
             <select
               aria-label="Reporting period"
               value={periodDays}
               onChange={(e) => {
                 const next = Number(e.target.value);
                 setPeriodDays(next);
-                void refresh(next, selectedListId);
+                void refresh(next, selectedListId, selectedConnectionId);
               }}
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
             >
@@ -326,7 +394,7 @@ export function DashboardView({
               onChange={(e) => {
                 const next = e.target.value;
                 setSelectedListId(next);
-                void refresh(periodDays, next);
+                void refresh(periodDays, next, selectedConnectionId);
               }}
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
             >
@@ -356,7 +424,7 @@ export function DashboardView({
               title={
                 data.connectionConfigured
                   ? 'Queue read-only MailWizz sync job'
-                  : 'Configure MailWizz API URL and key in Settings first'
+                  : 'Configure a customer connection in Customer Connections first'
               }
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -365,8 +433,10 @@ export function DashboardView({
 
             <a
               href={`/api/exports/subscribers?format=csv&encrypted=true${
-                selectedListId ? `&listId=${encodeURIComponent(selectedListId)}` : ''
-              }`}
+                selectedConnectionId
+                  ? `&customerConnectionId=${encodeURIComponent(selectedConnectionId)}`
+                  : ''
+              }${selectedListId ? `&listId=${encodeURIComponent(selectedListId)}` : ''}`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
             >
               <Download className="h-3.5 w-3.5" />
@@ -435,6 +505,97 @@ export function DashboardView({
           >
             {bannerMsg.text}
           </div>
+        )}
+
+        {/* Multi-Customer Account Health Strip */}
+        {(data.customerAccounts?.length ?? 0) > 0 && (
+          <section aria-label="Customer accounts overview" data-testid="customer-accounts-overview">
+            <Card className="p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    {selectedConnectionId
+                      ? 'Active Customer Account Scope'
+                      : `Global Admin Overview (${data.customerAccounts?.length ?? 0} Customer Connections)`}
+                  </h2>
+                  {selectedConnectionId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedConnectionId('');
+                        setSelectedListId('');
+                        void refresh(periodDays, '', '');
+                      }}
+                      className="text-xs font-medium text-indigo-600 hover:underline"
+                    >
+                      Show All Customers
+                    </button>
+                  )}
+                </div>
+                <Link
+                  href="/connections"
+                  className="text-xs font-medium text-indigo-600 hover:underline"
+                >
+                  Manage Customer Connections &rarr;
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 lg:grid-cols-3">
+                {data.customerAccounts?.map((acct) => {
+                  const active = selectedConnectionId === acct.id;
+                  return (
+                    <div
+                      key={acct.id}
+                      className={`rounded-lg border p-3 text-xs transition-colors ${
+                        active
+                          ? 'border-indigo-400 bg-indigo-50/50'
+                          : 'border-slate-200 bg-slate-50/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-semibold text-slate-900 truncate">
+                          {acct.customerName}
+                        </div>
+                        <Badge
+                          tone={
+                            acct.status === 'CONNECTED'
+                              ? 'emerald'
+                              : acct.status === 'AUTH_FAILED' || acct.status === 'ERROR'
+                                ? 'rose'
+                                : acct.isQuarantine
+                                  ? 'amber'
+                                  : 'slate'
+                          }
+                        >
+                          {acct.isQuarantine ? 'QUARANTINED' : acct.status}
+                        </Badge>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] text-slate-600">
+                        <span>{acct.hostname}</span>
+                        <span>Key: <code>{acct.apiKeyMasked ?? 'none'}</code></span>
+                        {acct.isPaused && <span className="text-amber-700 font-medium">Paused</span>}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-700">
+                        <span>
+                          {acct.listsCount} lists • {acct.subscribersCount.toLocaleString()} subs
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedConnectionId(acct.id);
+                            setSelectedListId('');
+                            void refresh(periodDays, '', acct.id);
+                          }}
+                          className="font-medium text-indigo-600 hover:underline"
+                        >
+                          {active ? 'Viewing' : 'Inspect Account'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </section>
         )}
 
         {/* Primary Hygiene & Subscriber Status KPIs */}
@@ -630,6 +791,9 @@ export function DashboardView({
                             <div className="flex items-center gap-2 font-medium text-slate-900">
                               {list.name}
                               {list.isDemoData && <Badge tone="amber">Demo</Badge>}
+                              {list.customerConnection && (
+                                <Badge tone="slate">{list.customerConnection.customerName}</Badge>
+                              )}
                             </div>
                             <div className="text-xs text-slate-500">
                               UID: <code>{list.listUid}</code>

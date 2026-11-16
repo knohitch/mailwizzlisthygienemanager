@@ -693,6 +693,7 @@ export async function loadHygieneRuleConfig(): Promise<HygieneRuleConfig> {
 
 export async function recomputeAllHygieneClassifications(
   mailingListId?: string,
+  customerConnectionId?: string,
   overrideConfig?: Partial<HygieneRuleConfig>
 ): Promise<{ updatedSubscribers: number }> {
   const baseConfig = await loadHygieneRuleConfig();
@@ -702,7 +703,10 @@ export async function recomputeAllHygieneClassifications(
   };
 
   const subscribers = await prisma.subscriber.findMany({
-    where: mailingListId ? { mailingListId } : undefined,
+    where: {
+      ...(mailingListId ? { mailingListId } : {}),
+      ...(customerConnectionId ? { customerConnectionId } : {}),
+    },
     include: {
       engagementEvents: {
         select: {

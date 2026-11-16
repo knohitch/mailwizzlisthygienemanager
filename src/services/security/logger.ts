@@ -35,12 +35,26 @@ export function redactEmailString(input: string): string {
   });
 }
 
+const INLINE_SECRET_REGEX =
+  /\b(X-Api-Key|X-MW-SIGNATURE|api[_-]?key|secret|password|token|authorization|bearer)\s*[:=]\s*([^\s,;]+)/gi;
+const BEARER_REGEX = /\bBearer\s+[A-Za-z0-9._~+/=-]{6,}/gi;
+const DB_URI_CRED_REGEX = /((?:mysql|postgresql|postgres):\/\/[^:\s/]+):([^@\s]+)@/gi;
+
+export function redactSensitiveString(input: string): string {
+  let out = input
+    .replace(DB_URI_CRED_REGEX, '$1:[REDACTED_SECRET]@')
+    .replace(BEARER_REGEX, 'Bearer [REDACTED_SECRET]')
+    .replace(INLINE_SECRET_REGEX, (_match, key) => `${key}=[REDACTED_SECRET]`);
+  out = redactEmailString(out);
+  return out;
+}
+
 export function sanitizeForLog(value: unknown, depth = 0): unknown {
   if (depth > 5) return '[MAX_DEPTH]';
   if (value === null || value === undefined) return value;
 
   if (typeof value === 'string') {
-    return redactEmailString(value);
+    return redactSensitiveString(value);
   }
   if (typeof value === 'number' || typeof value === 'boolean') {
     return value;
@@ -48,7 +62,7 @@ export function sanitizeForLog(value: unknown, depth = 0): unknown {
   if (value instanceof Error) {
     return {
       name: value.name,
-      message: redactEmailString(value.message),
+      message: redactSensitiveString(value.message),
     };
   }
   if (Array.isArray(value)) {
@@ -99,7 +113,7 @@ function emit(level: LogLevel, message: string, meta?: Record<string, unknown>):
   const payload = {
     ts: new Date().toISOString(),
     level,
-    msg: redactEmailString(message),
+    msg: redactSensitiveString(message),
     ...(meta ? { meta: sanitizeForLog(meta) } : {}),
   };
   const line = JSON.stringify(payload);

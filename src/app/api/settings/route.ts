@@ -226,9 +226,10 @@ export async function PUT(req: NextRequest) {
   });
 
   if (connectionChanged) {
-    // Invalidate stale cached verification whenever target MailWizz URL, API key, or auth preference changes
+    // Scope invalidation strictly to legacy primary connection so other customer connections stay isolated.
     await prisma.apiCapabilityCheck.updateMany({
       where: {
+        customerConnectionId: 'conn-primary-default',
         capabilityKey: {
           notIn: ['webhook_live_events', 'webhook_event_processing'],
         },
@@ -236,13 +237,14 @@ export async function PUT(req: NextRequest) {
       data: {
         status: 'NOT_YET_TESTED',
         checkedAt: new Date(),
-        notes: 'Reset after MailWizz URL/credential/auth change; re-run validation or Compatibility Check.',
+        notes: 'Reset after primary MailWizz URL/credential/auth change; re-run validation or Compatibility Check.',
       },
     });
     await mailWizzCapabilityRegistry.invalidateCachedCompatibility({
+      customerConnectionId: 'conn-primary-default',
       actorEmail: auth.session.adminEmail,
       ipAddress: auth.ip,
-      reason: 'MailWizz API URL, credential, or auth mode changed in Settings.',
+      reason: 'Primary MailWizz API URL, credential, or auth mode changed in Settings.',
     });
   }
 

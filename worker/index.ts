@@ -18,35 +18,67 @@ function parseScheduleIntervalMs(cronOrLabel: string): number {
 }
 
 async function maybeEnqueueScheduledSync(): Promise<void> {
-  const cfg = await prisma.appConfig.findUnique({ where: { id: 'default' } });
-  if (!cfg || !cfg.syncScheduleEnabled || !cfg.mailwizzApiUrl || !cfg.mailwizzApiKeyEnc) {
-    return;
-  }
-
-  const activeOrPending = await prisma.syncJob.count({
+  const connections = await prisma.mailWizzCustomerConnection.findMany({
     where: {
-      type: 'FULL_SYNC',
-      status: { in: ['PENDING', 'RUNNING'] },
+      syncScheduleEnabled: true,
+      isEnabled: true,
+      isQuarantine: false,
+      status: { not: 'DISABLED' },
+      installation: { isActive: true },
+      credentials: { some: { isActive: true, status: 'ACTIVE' } },
+      OR: [
+        { syncState: null },
+        { syncState: { isPaused: false } },
+      ],
+    },
+    include: {
+      credentials: {
+        where: { isActive: true, status: 'ACTIVE' },
+        orderBy: { version: 'desc' },
+        take: 1,
+      },
     },
   });
-  if (activeOrPending > 0) return;
 
-  const lastCompleted = await prisma.syncJob.findFirst({
-    where: { type: 'FULL_SYNC', status: 'COMPLETED' },
-    orderBy: { finishedAt: 'desc' },
-  });
-
-  const intervalMs = parseScheduleIntervalMs(cfg.syncScheduleCron);
-  const lastFinishedMs = lastCompleted?.finishedAt?.getTime() ?? 0;
-
-  if (Date.now() - lastFinishedMs >= intervalMs) {
-    await enqueueJob({
-      type: 'FULL_SYNC',
-      payload: { triggeredBy: 'scheduler', schedule: cfg.syncScheduleCron },
+  for (const conn of connections) {
+    const activeOrPending = await prisma.syncJob.count({
+      where: {
+        customerConnectionId: conn.id,
+        type: 'FULL_SYNC',
+        status: { in: ['PENDING', 'RUNNING'] },
+      },
     });
-    logger.info('Enqueued scheduled FULL_SYNC job', {
-      schedule: cfg.syncScheduleCron,
+    if (activeOrPending > 0) continue;
+
+    const lastCompleted = await prisma.syncJob.findFirst({
+      where: {
+        customerConnectionId: conn.id,
+        type: 'FULL_SYNC',
+        status: 'COMPLETED',
+      },
+      orderBy: { finishedAt: 'desc' },
     });
+
+    const intervalMs = parseScheduleIntervalMs(conn.syncScheduleCron);
+    const lastFinishedMs = lastCompleted?.finishedAt?.getTime() ?? 0;
+
+    if (Date.now() - lastFinishedMs >= intervalMs) {
+      await enqueueJob({
+        type: 'FULL_SYNC',
+        customerConnectionId: conn.id,
+        credentialVersion: conn.credentials[0]?.version ?? null,
+        payload: {
+          customerConnectionId: conn.id,
+          triggeredBy: 'scheduler',
+          schedule: conn.syncScheduleCron,
+        },
+      });
+      logger.info('Enqueued scheduled FULL_SYNC job for customer connection', {
+        customerConnectionId: conn.id,
+        customerSlug: conn.customerSlug,
+        schedule: conn.syncScheduleCron,
+      });
+    }
   }
 }
 

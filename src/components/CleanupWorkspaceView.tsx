@@ -26,6 +26,7 @@ import {
 
 interface ListOption {
   id: string;
+  customerConnectionId?: string;
   listUid: string;
   name: string;
   syncedSubscriberCount: number;
@@ -87,6 +88,8 @@ interface DryRunPreview {
 
 interface OperationSummary {
   id: string;
+  customerConnectionId?: string;
+  customerConnection?: { customerName: string } | null;
   actionType: string;
   status: string;
   dryRunOnly: boolean;
@@ -107,6 +110,7 @@ export function CleanupWorkspaceView({
   csrfToken,
   isDemoMode,
   phase1ReadOnly,
+  connections = [],
   lists,
   initialOperations,
 }: {
@@ -114,10 +118,18 @@ export function CleanupWorkspaceView({
   csrfToken: string;
   isDemoMode: boolean;
   phase1ReadOnly: boolean;
+  connections?: Array<{ id: string; customerName: string; customerSlug: string }>;
   lists: ListOption[];
   initialOperations: OperationSummary[];
 }) {
-  const [selectedListId, setSelectedListId] = useState<string>(lists[0]?.id ?? '');
+  const defaultList = lists[0];
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string>(
+    defaultList?.customerConnectionId ?? connections[0]?.id ?? ''
+  );
+  const [selectedListId, setSelectedListId] = useState<string>(defaultList?.id ?? '');
+  const visibleLists = selectedConnectionId
+    ? lists.filter((l) => l.customerConnectionId === selectedConnectionId)
+    : lists;
   const [combinator, setCombinator] = useState<'AND' | 'OR'>('AND');
   const [rows, setRows] = useState<FilterRow[]>([
     {
@@ -244,6 +256,7 @@ export function CleanupWorkspaceView({
           'X-CSRF-Token': csrfToken,
         },
         body: JSON.stringify({
+          customerConnectionId: selectedConnectionId || undefined,
           filter: buildFilterPayload(),
           mailingListId: selectedListId || undefined,
           page: 1,
@@ -262,8 +275,11 @@ export function CleanupWorkspaceView({
     }
   }
 
-  async function refreshOperations() {
-    const res = await fetch('/api/cleanup/preview');
+  async function refreshOperations(connId = selectedConnectionId) {
+    const url = connId
+      ? `/api/cleanup/preview?customerConnectionId=${encodeURIComponent(connId)}`
+      : '/api/cleanup/preview';
+    const res = await fetch(url);
     if (res.ok) {
       const json = await res.json();
       setOperations(json.operations ?? []);
@@ -276,6 +292,7 @@ export function CleanupWorkspaceView({
     setActionMsg(null);
     try {
       const payload: Record<string, unknown> = {
+        customerConnectionId: selectedConnectionId || undefined,
         actionType,
         filter: buildFilterPayload(),
         mailingListId: selectedListId || undefined,
@@ -418,7 +435,36 @@ export function CleanupWorkspaceView({
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle>1. Smart Subscriber Filter (AND / OR)</CardTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {connections.length > 0 && (
+                  <>
+                    <label className="text-xs font-medium text-slate-600" htmlFor="cleanup-customer-scope">
+                      Customer:
+                    </label>
+                    <select
+                      id="cleanup-customer-scope"
+                      data-testid="cleanup-customer-selector"
+                      value={selectedConnectionId}
+                      onChange={(e) => {
+                        const nextConn = e.target.value;
+                        setSelectedConnectionId(nextConn);
+                        const firstForConn = nextConn
+                          ? lists.find((l) => l.customerConnectionId === nextConn)
+                          : lists[0];
+                        setSelectedListId(firstForConn?.id ?? '');
+                        void refreshOperations(nextConn);
+                      }}
+                      className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                    >
+                      <option value="">All Customers</option>
+                      {connections.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.customerName}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
                 <label className="text-xs font-medium text-slate-600" htmlFor="list-scope">
                   List Scope:
                 </label>
@@ -428,8 +474,8 @@ export function CleanupWorkspaceView({
                   onChange={(e) => setSelectedListId(e.target.value)}
                   className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
                 >
-                  <option value="">All Mailing Lists</option>
-                  {lists.map((l) => (
+                  <option value="">All Mailing Lists ({visibleLists.length})</option>
+                  {visibleLists.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.name} ({l.syncedSubscriberCount})
                     </option>

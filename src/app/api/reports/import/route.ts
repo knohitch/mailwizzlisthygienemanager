@@ -8,6 +8,7 @@ import { recordAuditLog } from '@/services/security/audit';
 const ImportSchema = z.object({
   format: z.enum(['csv', 'json']),
   content: z.string().min(1).max(10_000_000),
+  customerConnectionId: z.string().trim().optional(),
   defaultCampaignUid: z.string().trim().optional(),
   mailingListId: z.string().trim().optional(),
 });
@@ -38,10 +39,12 @@ export async function POST(req: NextRequest) {
   try {
     const summary = await importVerifiedCampaignReport(parsed.data);
     const recomputed = await recomputeAllHygieneClassifications(
-      parsed.data.mailingListId
+      parsed.data.mailingListId,
+      parsed.data.customerConnectionId
     );
 
     await recordAuditLog({
+      customerConnectionId: parsed.data.customerConnectionId,
       actorEmail: auth.session.adminEmail,
       action: 'IMPORT_VERIFIED_REPORT',
       resourceType: 'EngagementEvent',

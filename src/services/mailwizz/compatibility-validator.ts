@@ -5,8 +5,8 @@ import { decryptSecret } from '@/services/security/crypto';
 import { mailWizzFutureAdapterResolver } from './adapter-resolver';
 import { mailWizzV3Adapter } from './adapter-v3';
 import { mailWizzCapabilityRegistry } from './capability-registry';
+import { getMailWizzClientWithContext, resolveUnambiguousConnectionId } from './client-factory';
 import { MailWizzApiError, MailWizzClient } from './client';
-import type { MailWizzAuthMode } from './compat';
 import type {
   CapabilityCheckEntry,
   CapabilityKey,
@@ -19,6 +19,7 @@ import { inspectHistoricalSources } from './historical-sources';
 import { mailWizzVersionDetector } from './version-detector';
 
 export interface ValidateConnectionWithContractsParams {
+  customerConnectionId?: string;
   client?: MailWizzClient | null;
   configuredVersion?: string | null;
   approvedVersion?: string | null;
@@ -74,6 +75,7 @@ export class MailWizzCompatibilityValidator {
           webhookLiveCount: 0,
         }
       : await inspectHistoricalSources({
+          customerConnectionId: params.customerConnectionId,
           reportingDbUri: params.reportingDbUri,
           reportingDbPrefix: params.reportingDbPrefix,
           nativeActivityApiSupported: false,
@@ -676,7 +678,8 @@ export class MailWizzCompatibilityValidator {
     const verifiedWrites = params.skipDbLookup
       ? new Set<string>()
       : await mailWizzCapabilityRegistry.loadVerifiedWriteCapabilities(
-          versionInfo.effectiveVersion
+          versionInfo.effectiveVersion,
+          params.customerConnectionId
         );
     for (const mutKey of [
       'list_creation',
@@ -759,6 +762,7 @@ export class MailWizzCompatibilityValidator {
     }
 
     return {
+      customerConnectionId: params.customerConnectionId ?? null,
       overallStatus,
       adapterInUse: `${resolvedAdapter.adapter.name} (${resolvedAdapter.adapter.id})`,
       adapterMode: resolvedAdapter.adapterMode,
@@ -784,8 +788,10 @@ export const mailWizzCompatibilityValidator = new MailWizzCompatibilityValidator
  * updates version detection and capability registry cleanly, and persists the report.
  */
 export async function runReadOnlyCompatibilityCheck(params: {
+  customerConnectionId?: string;
   actorEmail: string;
   ipAddress?: string | null;
+  fetchImpl?: typeof fetch;
 }): Promise<CompatibilityReport> {
   const env = getEnv();
   const cfg = await prisma.appConfig.upsert({
@@ -793,59 +799,119 @@ export async function runReadOnlyCompatibilityCheck(params: {
     update: {},
     create: { id: 'default' },
   });
-  const compatCfg = await mailWizzCapabilityRegistry.loadCompatibilityConfig();
 
-  const apiUrl = cfg.mailwizzApiUrl || env.MAILWIZZ_API_URL;
-  const apiKey = cfg.mailwizzApiKeyEnc
-    ? decryptSecret(cfg.mailwizzApiKeyEnc)
-    : env.MAILWIZZ_API_KEY;
-  const reportingDbUri = cfg.reportingDbUrlEnc
-    ? decryptSecret(cfg.reportingDbUrlEnc)
-    : env.MAILWIZZ_REPORTING_DB_URL || null;
-  const webhookConfigured = Boolean(cfg.webhookSecretEnc || env.MAILWIZZ_WEBHOOK_SECRET);
+  let connId: string | null = params.customerConnectionId?.trim() || null;
+  if (!connId) {
+    const activeConns = await prisma.mailWizzCustomerConnection.findMany({
+      where: { isQuarantine: false },
+      select: { id: true },
+      take: 2,
+    });
+    if (activeConns.length === 1) {
+      connId = activeConns[0].id;
+    } else if (activeConns.length > 1) {
+      throw new Error(
+        'Multiple customer connections exist. Explicit customerConnectionId is required to run compatibility check.'
+      );
+    }
+  }
 
-  const client =
-    apiUrl && apiKey
-      ? new MailWizzClient({
-          apiUrl,
-          apiKey,
-          authMode: (cfg.mailwizzAuthMode as MailWizzAuthMode) || 'auto',
-          maxRequestsPerSecond: cfg.maxApiRequestsPerSecond,
-          allowInsecureHttp: env.ALLOW_INSECURE_MAILWIZZ_HTTP,
-          maxRetries: 1,
-        })
-      : null;
+  const compatCfg = await mailWizzCapabilityRegistry.loadCompatibilityConfig(
+    connId ?? undefined
+  );
+
+  let client: MailWizzClient | null = null;
+  let reportingDbUri: string | null = env.MAILWIZZ_REPORTING_DB_URL || null;
+  let reportingDbPrefix = cfg.reportingDbPrefix || env.MAILWIZZ_REPORTING_DB_PREFIX;
+  let webhookConfigured = Boolean(cfg.webhookSecretEnc || env.MAILWIZZ_WEBHOOK_SECRET);
+
+  let isDemoConn = false;
+  if (connId) {
+    const conn = await prisma.mailWizzCustomerConnection.findUnique({
+      where: { id: connId },
+      include: { installation: true },
+    });
+    if (!conn) {
+      throw new Error(`Customer connection "${connId}" not found.`);
+    }
+    isDemoConn = conn.isDemoData;
+    if (conn.reportingDbUrlEnc) {
+      reportingDbUri = decryptSecret(conn.reportingDbUrlEnc);
+      reportingDbPrefix = conn.reportingDbPrefix || reportingDbPrefix;
+    } else if (cfg.reportingDbUrlEnc) {
+      reportingDbUri = decryptSecret(cfg.reportingDbUrlEnc);
+    }
+    webhookConfigured = Boolean(conn.webhookSecretEnc || webhookConfigured);
+
+    if (conn.isDemoData && !params.fetchImpl) {
+      client = null;
+    } else {
+      try {
+        const ctx = await getMailWizzClientWithContext(connId, {
+          fetchImpl: params.fetchImpl,
+        });
+        client = ctx.client;
+      } catch {
+        client = null;
+      }
+    }
+  }
 
   const report = await mailWizzCompatibilityValidator.validate({
+    customerConnectionId: connId ?? undefined,
     client,
     configuredVersion: compatCfg.configuredVersion,
     approvedVersion: compatCfg.approvedVersion,
     reportingDbUri,
-    reportingDbPrefix: cfg.reportingDbPrefix || env.MAILWIZZ_REPORTING_DB_PREFIX,
+    reportingDbPrefix,
     webhookConfigured,
     envMutationsEnabled: isMailWizzMutationsEnabled(),
   });
 
-  if (report.versionInfo.detectedVersion) {
+  if (connId && !isDemoConn) {
+    await prisma.mailWizzCustomerConnection.update({
+      where: { id: connId },
+      data: {
+        ...(report.versionInfo.detectedVersion
+          ? { detectedVersion: report.versionInfo.detectedVersion }
+          : {}),
+        status:
+          report.connectionStatus === 'CONNECTED'
+            ? 'CONNECTED'
+            : report.connectionStatus === 'AUTH_FAILED'
+              ? 'AUTH_FAILED'
+              : 'PENDING',
+      },
+    });
+  } else if (report.versionInfo.detectedVersion) {
     await prisma.appConfig.update({
       where: { id: 'default' },
       data: { mailwizzDetectedVersion: report.versionInfo.detectedVersion },
     });
   }
 
+  const scopedReport: CompatibilityReport = {
+    ...report,
+    customerConnectionId: connId ?? null,
+  };
+
   await mailWizzCapabilityRegistry.saveCompatibilityReport({
-    report,
+    customerConnectionId: connId ?? undefined,
+    report: scopedReport,
     actorEmail: params.actorEmail,
     ipAddress: params.ipAddress,
   });
 
-  return report;
+  return scopedReport;
 }
 
 /**
  * Loads current compatibility dashboard view state without triggering external network calls.
  */
-export async function getCompatibilityDashboardData(): Promise<{
+export async function getCompatibilityDashboardData(
+  customerConnectionId?: string
+): Promise<{
+  customerConnectionId: string | null;
   report: CompatibilityReport;
   approvedAt: string | null;
   approvedByEmail: string | null;
@@ -853,25 +919,54 @@ export async function getCompatibilityDashboardData(): Promise<{
   phase1ReadOnly: boolean;
   isDemoMode: boolean;
 }> {
-  const [cfg, compatCfg, persistedReport] = await Promise.all([
+  let connId: string | null = customerConnectionId?.trim() || null;
+  if (!connId) {
+    try {
+      connId = await resolveUnambiguousConnectionId();
+    } catch {
+      const firstConn = await prisma.mailWizzCustomerConnection.findFirst({
+        where: { isQuarantine: false },
+        orderBy: [{ isPrimary: 'desc' }, { customerName: 'asc' }],
+        select: { id: true },
+      });
+      connId = firstConn?.id ?? null;
+    }
+  }
+
+  const [cfg, connRecord, compatCfg, persistedReport] = await Promise.all([
     prisma.appConfig.upsert({
       where: { id: 'default' },
       update: {},
       create: { id: 'default' },
     }),
-    mailWizzCapabilityRegistry.loadCompatibilityConfig(),
-    mailWizzCapabilityRegistry.loadLatestCompatibilityReport(),
+    connId
+      ? prisma.mailWizzCustomerConnection.findUnique({
+          where: { id: connId },
+          select: {
+            id: true,
+            detectedVersion: true,
+            approvedVersion: true,
+            webhookSecretEnc: true,
+          },
+        })
+      : Promise.resolve(null),
+    mailWizzCapabilityRegistry.loadCompatibilityConfig(connId ?? undefined),
+    mailWizzCapabilityRegistry.loadLatestCompatibilityReport(connId ?? undefined),
   ]);
 
   const env = getEnv();
-  const webhookConfigured = Boolean(cfg.webhookSecretEnc || env.MAILWIZZ_WEBHOOK_SECRET);
+  const webhookConfigured = Boolean(
+    connRecord?.webhookSecretEnc || cfg.webhookSecretEnc || env.MAILWIZZ_WEBHOOK_SECRET
+  );
 
   if (persistedReport) {
     // Re-evaluate version info against latest saved configuredVersion / approvedVersion & current env gate
     const versionInfo = mailWizzVersionDetector.resolveVersionInfo({
       configuredVersion: compatCfg.configuredVersion,
       detectedVersion:
-        persistedReport.versionInfo.detectedVersion ?? cfg.mailwizzDetectedVersion,
+        persistedReport.versionInfo.detectedVersion ??
+        connRecord?.detectedVersion ??
+        cfg.mailwizzDetectedVersion,
       approvedVersion: compatCfg.approvedVersion,
     });
     const envMut = isMailWizzMutationsEnabled();
@@ -889,7 +984,8 @@ export async function getCompatibilityDashboardData(): Promise<{
     });
 
     const verifiedWrites = await mailWizzCapabilityRegistry.loadVerifiedWriteCapabilities(
-      versionInfo.effectiveVersion
+      versionInfo.effectiveVersion,
+      connId ?? undefined
     );
     const refreshedCaps = persistedReport.capabilities.map((cap) => {
       if (cap.category !== 'MUTATIONS' || cap.status === 'UNSUPPORTED') {
@@ -920,6 +1016,7 @@ export async function getCompatibilityDashboardData(): Promise<{
 
     const refreshedReport: CompatibilityReport = {
       ...persistedReport,
+      customerConnectionId: connId,
       capabilities: refreshedCaps,
       versionInfo,
       adapterMode:
@@ -937,6 +1034,7 @@ export async function getCompatibilityDashboardData(): Promise<{
     };
 
     return {
+      customerConnectionId: connId,
       report: refreshedReport,
       approvedAt: compatCfg.approvedAt,
       approvedByEmail: compatCfg.approvedByEmail,
@@ -955,7 +1053,11 @@ export async function getCompatibilityDashboardData(): Promise<{
   });
 
   return {
-    report: baselineReport,
+    customerConnectionId: connId,
+    report: {
+      ...baselineReport,
+      customerConnectionId: connId,
+    },
     approvedAt: compatCfg.approvedAt,
     approvedByEmail: compatCfg.approvedByEmail,
     configNotes: compatCfg.notes,

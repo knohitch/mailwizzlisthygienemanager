@@ -16,6 +16,8 @@ import { seedSyntheticDemoData } from '@/services/demo/seed-demo';
 describe('Integration: Mock MailWizz 3.0.5 Sync, Report Import & Durable Job Queue', () => {
   let server: http.Server;
   let mockBaseUrl = '';
+  const SYNC_INST_ID = 'inst-sync-int';
+  const SYNC_CONN_ID = 'conn-sync-int';
   const observedRequests: Array<{ method: string; url: string; apiKey: string | undefined }> =
     [];
 
@@ -334,6 +336,49 @@ describe('Integration: Mock MailWizz 3.0.5 Sync, Report Import & Durable Job Que
         batchSize: 50,
       },
     });
+
+    await prisma.mailWizzInstallation.upsert({
+      where: { id: SYNC_INST_ID },
+      update: { baseUrl: mockBaseUrl, hostname: '127.0.0.1', maxRequestsPerSecond: 50, isActive: true },
+      create: {
+        id: SYNC_INST_ID,
+        name: 'Sync Integration Mock Server',
+        baseUrl: mockBaseUrl,
+        hostname: '127.0.0.1',
+        maxRequestsPerSecond: 50,
+      },
+    });
+    await prisma.mailWizzCustomerConnection.upsert({
+      where: { id: SYNC_CONN_ID },
+      update: { isEnabled: true, isQuarantine: false, isDemoData: false, status: 'CONNECTED' },
+      create: {
+        id: SYNC_CONN_ID,
+        installationId: SYNC_INST_ID,
+        customerName: 'Sync Integration Customer',
+        customerSlug: 'sync-integration-customer',
+        authMode: 'x-api-key',
+        maxRequestsPerSecond: 50,
+        isEnabled: true,
+        isQuarantine: false,
+        isDemoData: false,
+        status: 'CONNECTED',
+      },
+    });
+    await prisma.mailWizzConnectionCredential.deleteMany({
+      where: { customerConnectionId: SYNC_CONN_ID },
+    });
+    await prisma.mailWizzConnectionCredential.create({
+      data: {
+        customerConnectionId: SYNC_CONN_ID,
+        version: 1,
+        apiKeyEnc: encryptSecret('integration-test-key'),
+        apiKeyLast4: '-key',
+        apiKeyFingerprint: 'sync-int-fp',
+        isActive: true,
+        status: 'ACTIVE',
+        createdByEmail: 'sync-integration@local.hygiene',
+      },
+    });
   });
 
   afterAll(async () => {
@@ -348,6 +393,8 @@ describe('Integration: Mock MailWizz 3.0.5 Sync, Report Import & Durable Job Que
     });
     await prisma.campaign.deleteMany({ where: { campaignUid: 'camp-int-1' } });
     await prisma.mailingList.deleteMany({ where: { listUid: 'mw-int-list-1' } });
+    await prisma.mailWizzCustomerConnection.deleteMany({ where: { id: SYNC_CONN_ID } });
+    await prisma.mailWizzInstallation.deleteMany({ where: { id: SYNC_INST_ID } });
     await prisma.syncJob.deleteMany({
       where: { payloadJson: { path: ['integrationTest'], equals: true } },
     });
@@ -363,7 +410,10 @@ describe('Integration: Mock MailWizz 3.0.5 Sync, Report Import & Durable Job Que
   });
 
   it('syncs lists, paginated subscribers, segments, campaigns, and bounces read-only without calling tracking endpoints', async () => {
-    const result = await runMailWizzSync({ onlyListUid: 'mw-int-list-1' });
+    const result = await runMailWizzSync({
+      customerConnectionId: SYNC_CONN_ID,
+      onlyListUid: 'mw-int-list-1',
+    });
     expect(result.listsSynced).toBe(1);
     expect(result.subscribersSynced).toBe(3);
     expect(result.segmentsSynced).toBe(1);
@@ -381,7 +431,12 @@ describe('Integration: Mock MailWizz 3.0.5 Sync, Report Import & Durable Job Que
     }
 
     const list = await prisma.mailingList.findUnique({
-      where: { listUid: 'mw-int-list-1' },
+      where: {
+        customerConnectionId_listUid: {
+          customerConnectionId: SYNC_CONN_ID,
+          listUid: 'mw-int-list-1',
+        },
+      },
     });
     expect(list?.reconciliationStatus).toBe('MATCHED');
     expect(list?.syncedSubscriberCount).toBe(3);

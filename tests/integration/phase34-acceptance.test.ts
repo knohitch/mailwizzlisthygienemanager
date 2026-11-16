@@ -20,6 +20,8 @@ const P34_ACTOR = 'p34-acceptance@local.hygiene';
 const P34_LIST_ID = 'p34_accept_list';
 const P34_SUB_ID = 'p34_accept_sub';
 const P34_DEMO_LIST_ID = 'p34_demo_list';
+const P34_INST_ID = 'p34_test_inst';
+const P34_CONN_ID = 'p34_test_conn';
 
 function buildFullVerifiedReport(unsubscribeStatus: 'VERIFIED' | 'AVAILABLE_BUT_UNTESTED'): CompatibilityReport {
   const nowIso = new Date().toISOString();
@@ -98,11 +100,42 @@ describe('Integration: Phase 3.4 Docker Acceptance & Hardened Mutation Gates', (
   const createdJobIds: string[] = [];
 
   beforeAll(async () => {
+    await prisma.mailWizzInstallation.upsert({
+      where: { id: P34_INST_ID },
+      update: { name: 'Phase34 Test MailWizz', isActive: true },
+      create: {
+        id: P34_INST_ID,
+        name: 'Phase34 Test MailWizz',
+        baseUrl: 'https://p34-mock.example.invalid/api/index.php',
+        hostname: 'p34-mock.example.invalid',
+      },
+    });
+    await prisma.mailWizzCustomerConnection.upsert({
+      where: { id: P34_CONN_ID },
+      update: { isEnabled: true, isQuarantine: false, isDemoData: false, status: 'CONNECTED' },
+      create: {
+        id: P34_CONN_ID,
+        installationId: P34_INST_ID,
+        customerName: 'Phase 3.4 Test Customer',
+        customerSlug: 'p34-test-customer',
+        isEnabled: true,
+        isQuarantine: false,
+        isDemoData: false,
+        status: 'CONNECTED',
+      },
+    });
+
     await prisma.mailingList.upsert({
-      where: { listUid: 'p34_real_uid' },
+      where: {
+        customerConnectionId_listUid: {
+          customerConnectionId: P34_CONN_ID,
+          listUid: 'p34_real_uid',
+        },
+      },
       update: { isDemoData: false, name: 'Phase 3.4 Eligible List' },
       create: {
         id: P34_LIST_ID,
+        customerConnectionId: P34_CONN_ID,
         listUid: 'p34_real_uid',
         name: 'Phase 3.4 Eligible List',
         displayName: 'Phase 3.4 Eligible List',
@@ -112,10 +145,16 @@ describe('Integration: Phase 3.4 Docker Acceptance & Hardened Mutation Gates', (
     });
 
     await prisma.mailingList.upsert({
-      where: { listUid: 'p34_demo_uid' },
+      where: {
+        customerConnectionId_listUid: {
+          customerConnectionId: P34_CONN_ID,
+          listUid: 'p34_demo_uid',
+        },
+      },
       update: { isDemoData: true, name: 'Phase 3.4 Demo List' },
       create: {
         id: P34_DEMO_LIST_ID,
+        customerConnectionId: P34_CONN_ID,
         listUid: 'p34_demo_uid',
         name: 'Phase 3.4 Demo List',
         displayName: 'Phase 3.4 Demo List',
@@ -147,6 +186,7 @@ describe('Integration: Phase 3.4 Docker Acceptance & Hardened Mutation Gates', (
       },
       create: {
         id: P34_SUB_ID,
+        customerConnectionId: P34_CONN_ID,
         mailingListId: P34_LIST_ID,
         subscriberUid: 'p34_sub_uid',
         email: 'p34.eligible@example.com',
@@ -199,23 +239,27 @@ describe('Integration: Phase 3.4 Docker Acceptance & Hardened Mutation Gates', (
     });
     await prisma.subscriber.deleteMany({ where: { id: P34_SUB_ID } });
     await prisma.mailingList.deleteMany({ where: { id: { in: [P34_LIST_ID, P34_DEMO_LIST_ID] } } });
+    await prisma.mailWizzCustomerConnection.deleteMany({ where: { id: P34_CONN_ID } });
+    await prisma.mailWizzInstallation.deleteMany({ where: { id: P34_INST_ID } });
   });
 
   it('enforces global lock, blocks AVAILABLE_BUT_UNTESTED, rejects demo disposable verification, and clears cache on reset', async () => {
     // 1. Even with a VERIFIED report saved, ENABLE_MAILWIZZ_MUTATIONS=false blocks remote mutations globally
     await mailWizzCapabilityRegistry.saveCompatibilityReport({
+      customerConnectionId: P34_CONN_ID,
       report: buildFullVerifiedReport('VERIFIED'),
       actorEmail: P34_ACTOR,
     });
     process.env.ENABLE_MAILWIZZ_MUTATIONS = 'false';
     resetEnvCacheForTests();
-    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).rejects.toBeInstanceOf(
-      MutationGateLockedError
-    );
+    await expect(
+      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE', { customerConnectionId: P34_CONN_ID })
+    ).rejects.toBeInstanceOf(MutationGateLockedError);
 
     // Demo lists and mutation-disabled environments cannot record disposable write verification
     await expect(
       mailWizzCapabilityRegistry.recordDisposableWriteVerification({
+        customerConnectionId: P34_CONN_ID,
         capabilityKey: 'subscriber_unsubscribe',
         approvedVersion: '3.0.5',
         disposableListUid: 'p34_real_uid',
@@ -229,6 +273,7 @@ describe('Integration: Phase 3.4 Docker Acceptance & Hardened Mutation Gates', (
 
     await expect(
       mailWizzCapabilityRegistry.recordDisposableWriteVerification({
+        customerConnectionId: P34_CONN_ID,
         capabilityKey: 'subscriber_unsubscribe',
         approvedVersion: '3.0.5',
         disposableListUid: 'demo-list-1',
@@ -239,6 +284,7 @@ describe('Integration: Phase 3.4 Docker Acceptance & Hardened Mutation Gates', (
 
     await expect(
       mailWizzCapabilityRegistry.recordDisposableWriteVerification({
+        customerConnectionId: P34_CONN_ID,
         capabilityKey: 'subscriber_unsubscribe',
         approvedVersion: '3.0.5',
         disposableListUid: 'p34_demo_uid',
@@ -249,34 +295,41 @@ describe('Integration: Phase 3.4 Docker Acceptance & Hardened Mutation Gates', (
 
     // 2. AVAILABLE_BUT_UNTESTED must fail closed even when version=3.0.5 is approved and ENABLE_MAILWIZZ_MUTATIONS=true
     await mailWizzCapabilityRegistry.saveCompatibilityReport({
+      customerConnectionId: P34_CONN_ID,
       report: buildFullVerifiedReport('AVAILABLE_BUT_UNTESTED'),
       actorEmail: P34_ACTOR,
     });
-    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).rejects.toBeInstanceOf(
-      UnsafeOperationBlockedError
-    );
+    await expect(
+      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE', { customerConnectionId: P34_CONN_ID })
+    ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
 
     // 3. After disposable write verification + invalidation reset, cached compatibility clears cleanly
     await mailWizzCapabilityRegistry.recordDisposableWriteVerification({
+      customerConnectionId: P34_CONN_ID,
       capabilityKey: 'subscriber_unsubscribe',
       approvedVersion: '3.0.5',
       disposableListUid: 'p34_real_uid',
       evidence: 'Authorized disposable sandbox unsubscribe ok',
       actorEmail: P34_ACTOR,
     });
-    expect((await mailWizzCapabilityRegistry.loadVerifiedWriteCapabilities('3.0.5')).has('subscriber_unsubscribe')).toBe(
-      true
-    );
+    expect(
+      (await mailWizzCapabilityRegistry.loadVerifiedWriteCapabilities('3.0.5', P34_CONN_ID)).has(
+        'subscriber_unsubscribe'
+      )
+    ).toBe(true);
 
     await mailWizzCapabilityRegistry.invalidateCachedCompatibility({
+      customerConnectionId: P34_CONN_ID,
       actorEmail: P34_ACTOR,
       reason: 'Simulated MailWizz endpoint change',
     });
-    expect((await mailWizzCapabilityRegistry.loadVerifiedWriteCapabilities('3.0.5')).size).toBe(0);
-    expect(await mailWizzCapabilityRegistry.loadLatestCompatibilityReport()).toBeNull();
-    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).rejects.toBeInstanceOf(
-      UnsafeOperationBlockedError
-    );
+    expect(
+      (await mailWizzCapabilityRegistry.loadVerifiedWriteCapabilities('3.0.5', P34_CONN_ID)).size
+    ).toBe(0);
+    expect(await mailWizzCapabilityRegistry.loadLatestCompatibilityReport(P34_CONN_ID)).toBeNull();
+    await expect(
+      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE', { customerConnectionId: P34_CONN_ID })
+    ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
 
     process.env.ENABLE_MAILWIZZ_MUTATIONS = 'false';
     resetEnvCacheForTests();

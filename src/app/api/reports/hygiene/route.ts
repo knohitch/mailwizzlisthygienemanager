@@ -23,6 +23,10 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return auth.response;
 
   const sp = new URL(req.url).searchParams;
+  const customerConnectionId =
+    sp.get('customerConnectionId')?.trim() ||
+    sp.get('connectionId')?.trim() ||
+    undefined;
   const mailingListId = sp.get('mailingListId')?.trim() || undefined;
   const format = sp.get('format')?.trim() || 'json';
   const reportType = sp.get('reportType')?.trim() as HygieneReportType | undefined;
@@ -31,17 +35,24 @@ export async function GET(req: NextRequest) {
   if (format === 'csv' && reportType && VALID_REPORT_TYPES.has(reportType)) {
     const { filename, csv, rowCount } = await generateReportCsv({
       reportType,
+      customerConnectionId,
       mailingListId,
       maskContacts: mask,
     });
     await recordAuditLog({
+      customerConnectionId,
       actorEmail: auth.session.adminEmail,
       action: 'EXPORT_HYGIENE_REPORT_CSV',
       resourceType: 'HygieneReport',
       resourceId: reportType,
       outcome: 'SUCCESS',
       ipAddress: auth.ip,
-      details: { mailingListId: mailingListId ?? 'ALL', rowCount, masked: mask },
+      details: {
+        customerConnectionId: customerConnectionId ?? 'ALL',
+        mailingListId: mailingListId ?? 'ALL',
+        rowCount,
+        masked: mask,
+      },
     });
     return new NextResponse(csv, {
       status: 200,
@@ -53,6 +64,6 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const summary = await generateAllReportsSummary(mailingListId);
+  const summary = await generateAllReportsSummary(mailingListId, customerConnectionId);
   return NextResponse.json(summary);
 }

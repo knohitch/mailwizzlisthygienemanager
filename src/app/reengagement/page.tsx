@@ -11,20 +11,33 @@ export default async function ReengagementPage() {
   const session = await getServerSession();
   if (!session) redirect('/login');
 
-  const [cfg, lists, plans] = await Promise.all([
+  const [cfg, connections, lists, plans] = await Promise.all([
     prisma.appConfig.upsert({
       where: { id: 'default' },
       update: {},
       create: { id: 'default' },
     }),
+    prisma.mailWizzCustomerConnection.findMany({
+      orderBy: [{ isPrimary: 'desc' }, { customerName: 'asc' }],
+      select: { id: true, customerName: true, customerSlug: true },
+    }),
     prisma.mailingList.findMany({
       orderBy: { syncedSubscriberCount: 'desc' },
-      select: { id: true, name: true, listUid: true, syncedSubscriberCount: true },
+      select: {
+        id: true,
+        customerConnectionId: true,
+        name: true,
+        listUid: true,
+        syncedSubscriberCount: true,
+      },
     }),
     prisma.reengagementPlan.findMany({
       orderBy: { createdAt: 'desc' },
       take: 25,
-      include: { mailingList: { select: { name: true, listUid: true } } },
+      include: {
+        customerConnection: { select: { customerName: true } },
+        mailingList: { select: { name: true, listUid: true } },
+      },
     }),
   ]);
 
@@ -34,6 +47,7 @@ export default async function ReengagementPage() {
       csrfToken={deriveCsrfToken(session)}
       isDemoMode={cfg.isDemoMode}
       phase1ReadOnly={!isMailWizzMutationsEnabled()}
+      connections={connections}
       lists={lists}
       initialPlans={plans.map((p) => ({
         ...p,

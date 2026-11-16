@@ -147,9 +147,35 @@ describe('Phase 3.3 Isolated Deployment, Per-Operation Guard & Demo Isolation Re
     await prisma.subscriber.deleteMany({ where: { id: P33_SUB_ID } });
     await prisma.mailingList.deleteMany({ where: { id: P33_LIST_ID } });
 
+    await prisma.mailWizzInstallation.upsert({
+      where: { id: 'p33_test_inst' },
+      update: { name: 'Phase33 Test MailWizz', isActive: true },
+      create: {
+        id: 'p33_test_inst',
+        name: 'Phase33 Test MailWizz',
+        baseUrl: 'https://p33-mock.example.invalid/api/index.php',
+        hostname: 'p33-mock.example.invalid',
+      },
+    });
+    await prisma.mailWizzCustomerConnection.upsert({
+      where: { id: 'p33_test_conn' },
+      update: { isEnabled: true, isQuarantine: false, isDemoData: false, status: 'CONNECTED' },
+      create: {
+        id: 'p33_test_conn',
+        installationId: 'p33_test_inst',
+        customerName: 'Phase 3.3 Test Customer',
+        customerSlug: 'p33-test-customer',
+        isEnabled: true,
+        isQuarantine: false,
+        isDemoData: false,
+        status: 'CONNECTED',
+      },
+    });
+
     await prisma.mailingList.create({
       data: {
         id: P33_LIST_ID,
+        customerConnectionId: 'p33_test_conn',
         listUid: 'p33_uid_list',
         name: 'Phase 3.3 Real Readiness List',
         optIn: 'single',
@@ -160,6 +186,7 @@ describe('Phase 3.3 Isolated Deployment, Per-Operation Guard & Demo Isolation Re
     await prisma.subscriber.create({
       data: {
         id: P33_SUB_ID,
+        customerConnectionId: 'p33_test_conn',
         mailingListId: P33_LIST_ID,
         subscriberUid: 'p33_uid_sub',
         email: 'p33.real@example.com',
@@ -204,6 +231,8 @@ describe('Phase 3.3 Isolated Deployment, Per-Operation Guard & Demo Isolation Re
     await prisma.adminSession.deleteMany({ where: { id: sessionId } });
     await prisma.subscriber.deleteMany({ where: { id: P33_SUB_ID } });
     await prisma.mailingList.deleteMany({ where: { id: P33_LIST_ID } });
+    await prisma.mailWizzCustomerConnection.deleteMany({ where: { id: 'p33_test_conn' } });
+    await prisma.mailWizzInstallation.deleteMany({ where: { id: 'p33_test_inst' } });
   });
 
   it('reports healthy database/worker status and keeps ENABLE_MAILWIZZ_MUTATIONS=false on /api/health', async () => {
@@ -228,6 +257,7 @@ describe('Phase 3.3 Isolated Deployment, Per-Operation Guard & Demo Isolation Re
   it('requires per-operation compatibility verification even when a MailWizz version is approved', async () => {
     const partialReport = buildPartialApprovedReport();
     await mailWizzCapabilityRegistry.saveCompatibilityReport({
+      customerConnectionId: 'p33_test_conn',
       report: partialReport,
       actorEmail: P33_ACTOR,
     });
@@ -237,7 +267,7 @@ describe('Phase 3.3 Isolated Deployment, Per-Operation Guard & Demo Isolation Re
 
     // AVAILABLE_BUT_UNTESTED must STILL be blocked even when the version is approved
     await expect(
-      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')
+      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE', { customerConnectionId: 'p33_test_conn' })
     ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
 
     // Once subscriber_unsubscribe is VERIFIED via disposable testing, UNSUBSCRIBE passes
@@ -254,23 +284,26 @@ describe('Phase 3.3 Isolated Deployment, Per-Operation Guard & Demo Isolation Re
       ),
     };
     await mailWizzCapabilityRegistry.saveCompatibilityReport({
+      customerConnectionId: 'p33_test_conn',
       report: verifiedReport,
       actorEmail: P33_ACTOR,
     });
-    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).resolves.toBeUndefined();
+    await expect(
+      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE', { customerConnectionId: 'p33_test_conn' })
+    ).resolves.toBeUndefined();
 
     // Per-operation checks still block UNSUPPORTED operations on the same approved version
     await expect(
-      assertCompatibilityPermitsRemoteMutations('CREATE_SEGMENT')
+      assertCompatibilityPermitsRemoteMutations('CREATE_SEGMENT', { customerConnectionId: 'p33_test_conn' })
     ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
     await expect(
-      assertCompatibilityPermitsRemoteMutations('COPY_SUBSCRIBERS')
+      assertCompatibilityPermitsRemoteMutations('COPY_SUBSCRIBERS', { customerConnectionId: 'p33_test_conn' })
     ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
     await expect(
-      assertCompatibilityPermitsRemoteMutations('MOVE_SUBSCRIBERS')
+      assertCompatibilityPermitsRemoteMutations('MOVE_SUBSCRIBERS', { customerConnectionId: 'p33_test_conn' })
     ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
     await expect(
-      createConfiguredMutationClient('CREATE_SEGMENT')
+      createConfiguredMutationClient('CREATE_SEGMENT', 'p33_test_conn')
     ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
 
     // Planner confirmation also rejects unsupported remote action at enqueue time

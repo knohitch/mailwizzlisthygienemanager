@@ -24,20 +24,49 @@ export async function GET(
   if (!auth.ok) return auth.response;
 
   const { listId } = await context.params;
-  const list = await prisma.mailingList.findFirst({
-    where: { OR: [{ id: listId }, { listUid: listId }] },
+  const sp = req.nextUrl.searchParams;
+  const customerConnectionId =
+    sp.get('customerConnectionId')?.trim() ||
+    sp.get('connectionId')?.trim() ||
+    undefined;
+
+  const candidates = await prisma.mailingList.findMany({
+    where: {
+      OR: [{ id: listId }, { listUid: listId }],
+      ...(customerConnectionId ? { customerConnectionId } : {}),
+    },
     include: {
+      customerConnection: {
+        select: {
+          id: true,
+          customerName: true,
+          customerSlug: true,
+          isQuarantine: true,
+          isEnabled: true,
+        },
+      },
       segments: {
         orderBy: { name: 'asc' },
       },
     },
+    take: 2,
   });
 
+  if (candidates.length > 1) {
+    return NextResponse.json(
+      {
+        error:
+          'Multiple customer connections share this list UID. Specify customerConnectionId query parameter or open by internal list ID.',
+      },
+      { status: 400 }
+    );
+  }
+
+  const list = candidates[0];
   if (!list) {
     return NextResponse.json({ error: 'Mailing list not found.' }, { status: 404 });
   }
 
-  const sp = req.nextUrl.searchParams;
   const q = sp.get('q')?.trim() ?? '';
   const statusFilter = sp.get('status')?.trim() || undefined;
   const hygieneFilter = sp.get('hygiene')?.trim() || undefined;

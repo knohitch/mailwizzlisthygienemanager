@@ -6,13 +6,19 @@ import { DashboardView } from '@/components/DashboardView';
 
 export const dynamic = 'force-dynamic';
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ customerConnectionId?: string }>;
+}) {
   const session = await getServerSession();
   if (!session) {
     redirect('/login');
   }
 
-  const initialData = await getDashboardSummary();
+  const sp = searchParams ? await searchParams : {};
+  const customerConnectionId = sp.customerConnectionId?.trim() || undefined;
+  const initialData = await getDashboardSummary({ customerConnectionId });
 
   return (
     <DashboardView

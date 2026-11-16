@@ -104,15 +104,30 @@ function adapterModeBadge(mode: CompatibilityReport['adapterMode']) {
   }
 }
 
+interface ConnectionOption {
+  id: string;
+  customerName: string;
+  customerSlug: string;
+  status: string;
+  isEnabled: boolean;
+}
+
 export function CompatibilityView({
   adminEmail,
   csrfToken,
+  connections = [],
+  initialConnectionId = '',
   initialData,
 }: {
   adminEmail: string;
   csrfToken: string;
+  connections?: ConnectionOption[];
+  initialConnectionId?: string;
   initialData: CompatibilityDashboardPayload;
 }) {
+  const [selectedConnectionId, setSelectedConnectionId] = useState(
+    initialConnectionId || initialData.report.customerConnectionId || ''
+  );
   const [data, setData] = useState<CompatibilityDashboardPayload>(initialData);
   const [configuredInput, setConfiguredInput] = useState(
     initialData.report.versionInfo.configuredVersion ?? ''
@@ -123,6 +138,21 @@ export function CompatibilityView({
     type: 'ok' | 'error';
     text: string;
   } | null>(null);
+
+  async function switchConnection(nextConnId: string) {
+    setSelectedConnectionId(nextConnId);
+    setStatusMessage(null);
+    const url = nextConnId
+      ? `/api/compatibility?customerConnectionId=${encodeURIComponent(nextConnId)}`
+      : '/api/compatibility';
+    const res = await fetch(url);
+    if (res.ok) {
+      const json = (await res.json()) as CompatibilityDashboardPayload;
+      setData(json);
+      setConfiguredInput(json.report.versionInfo.configuredVersion ?? '');
+      setNotesInput(json.configNotes ?? '');
+    }
+  }
 
   const report = data.report;
   const verdictMeta = VERDICT_META[report.overallStatus];
@@ -163,7 +193,10 @@ export function CompatibilityView({
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          ...(selectedConnectionId ? { customerConnectionId: selectedConnectionId } : {}),
+        }),
       });
       const json = (await res.json()) as {
         ok?: boolean;
@@ -219,6 +252,21 @@ export function CompatibilityView({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {connections.length > 0 && (
+              <select
+                aria-label="Compatibility customer connection"
+                data-testid="compatibility-customer-selector"
+                value={selectedConnectionId}
+                onChange={(e) => void switchConnection(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+              >
+                {connections.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.customerName} ({c.status})
+                  </option>
+                ))}
+              </select>
+            )}
             <Button
               type="button"
               variant="secondary"
@@ -232,10 +280,10 @@ export function CompatibilityView({
               {busyAction === 'CHECK' ? 'Running Read-Only Check...' : 'Run Compatibility Check'}
             </Button>
             <Link
-              href="/settings"
+              href="/connections"
               className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              Connection Settings
+              Customer Connections
             </Link>
           </div>
         </div>

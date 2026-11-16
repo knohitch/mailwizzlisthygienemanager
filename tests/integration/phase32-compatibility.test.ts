@@ -26,6 +26,8 @@ import { sha256Hex } from '@/services/security/crypto';
 const P32_LIST_ID = 'p32_compat_list';
 const P32_SUB_ID = 'p32_compat_sub';
 const P32_EVENT_ID = 'p32_compat_hist_ev';
+const P32_INST_ID = 'p32_test_inst';
+const P32_CONN_ID = 'p32_test_conn';
 const TEST_ACTOR = 'p32-compat-test@local.hygiene';
 
 describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () => {
@@ -54,9 +56,35 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
     await prisma.subscriber.deleteMany({ where: { id: P32_SUB_ID } });
     await prisma.mailingList.deleteMany({ where: { id: P32_LIST_ID } });
 
+    await prisma.mailWizzInstallation.upsert({
+      where: { id: P32_INST_ID },
+      update: { name: 'Phase32 Test MailWizz', isActive: true },
+      create: {
+        id: P32_INST_ID,
+        name: 'Phase32 Test MailWizz',
+        baseUrl: 'https://p32-mock.example.invalid/api/index.php',
+        hostname: 'p32-mock.example.invalid',
+      },
+    });
+    await prisma.mailWizzCustomerConnection.upsert({
+      where: { id: P32_CONN_ID },
+      update: { isEnabled: true, isQuarantine: false, isDemoData: false, status: 'CONNECTED' },
+      create: {
+        id: P32_CONN_ID,
+        installationId: P32_INST_ID,
+        customerName: 'Phase 3.2 Test Customer',
+        customerSlug: 'p32-test-customer',
+        isEnabled: true,
+        isQuarantine: false,
+        isDemoData: false,
+        status: 'CONNECTED',
+      },
+    });
+
     await prisma.mailingList.create({
       data: {
         id: P32_LIST_ID,
+        customerConnectionId: P32_CONN_ID,
         listUid: 'p32_uid_list',
         name: 'Phase 3.2 Historical Continuity List',
         optIn: 'single',
@@ -67,6 +95,7 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
     await prisma.subscriber.create({
       data: {
         id: P32_SUB_ID,
+        customerConnectionId: P32_CONN_ID,
         mailingListId: P32_LIST_ID,
         subscriberUid: 'p32_uid_sub',
         email: 'continuity@example.com',
@@ -80,6 +109,7 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
     await prisma.engagementEvent.create({
       data: {
         id: P32_EVENT_ID,
+        customerConnectionId: P32_CONN_ID,
         subscriberId: P32_SUB_ID,
         mailingListId: P32_LIST_ID,
         eventType: 'CLICK',
@@ -125,6 +155,8 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
     await prisma.engagementEvent.deleteMany({ where: { id: P32_EVENT_ID } });
     await prisma.subscriber.deleteMany({ where: { id: P32_SUB_ID } });
     await prisma.mailingList.deleteMany({ where: { id: P32_LIST_ID } });
+    await prisma.mailWizzCustomerConnection.deleteMany({ where: { id: P32_CONN_ID } });
+    await prisma.mailWizzInstallation.deleteMany({ where: { id: P32_INST_ID } });
   });
 
   it('persists verified 3.0.5 baseline compatibility and blocks unapproved 4.0.0 mutations fail-closed', async () => {
@@ -265,6 +297,7 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
     });
 
     const v305Report = await mailWizzCompatibilityValidator.validate({
+      customerConnectionId: P32_CONN_ID,
       client: mockV305Client,
       configuredVersion: '3.0.5',
       approvedVersion: '3.0.5',
@@ -280,24 +313,26 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
 
     // Save 3.0.5 report -> while ENABLE_MAILWIZZ_MUTATIONS=false, global lock rejects first
     await mailWizzCapabilityRegistry.saveCompatibilityReport({
+      customerConnectionId: P32_CONN_ID,
       report: v305Report,
       actorEmail: TEST_ACTOR,
     });
     process.env.ENABLE_MAILWIZZ_MUTATIONS = 'false';
     resetEnvCacheForTests();
-    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).rejects.toBeInstanceOf(
-      MutationGateLockedError
-    );
+    await expect(
+      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE', { customerConnectionId: P32_CONN_ID })
+    ).rejects.toBeInstanceOf(MutationGateLockedError);
 
     // Even when ENABLE_MAILWIZZ_MUTATIONS=true, AVAILABLE_BUT_UNTESTED remains blocked
     process.env.ENABLE_MAILWIZZ_MUTATIONS = 'true';
     resetEnvCacheForTests();
-    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).rejects.toBeInstanceOf(
-      UnsafeOperationBlockedError
-    );
+    await expect(
+      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE', { customerConnectionId: P32_CONN_ID })
+    ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
 
     // Record disposable write verification for subscriber_unsubscribe -> re-validate -> UNSUBSCRIBE permitted, CREATE_SEGMENT still blocked
     await mailWizzCapabilityRegistry.recordDisposableWriteVerification({
+      customerConnectionId: P32_CONN_ID,
       capabilityKey: 'subscriber_unsubscribe',
       approvedVersion: '3.0.5',
       disposableListUid: 'disposable_test_list',
@@ -305,6 +340,7 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
       actorEmail: TEST_ACTOR,
     });
     const v305WithVerifiedUnsub = await mailWizzCompatibilityValidator.validate({
+      customerConnectionId: P32_CONN_ID,
       client: mockV305Client,
       configuredVersion: '3.0.5',
       approvedVersion: '3.0.5',
@@ -315,16 +351,20 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
       v305WithVerifiedUnsub.capabilities.find((c) => c.key === 'subscriber_unsubscribe')?.status
     ).toBe('VERIFIED');
     await mailWizzCapabilityRegistry.saveCompatibilityReport({
+      customerConnectionId: P32_CONN_ID,
       report: v305WithVerifiedUnsub,
       actorEmail: TEST_ACTOR,
     });
-    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).resolves.toBeUndefined();
-    await expect(assertCompatibilityPermitsRemoteMutations('CREATE_SEGMENT')).rejects.toBeInstanceOf(
-      UnsafeOperationBlockedError
-    );
+    await expect(
+      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE', { customerConnectionId: P32_CONN_ID })
+    ).resolves.toBeUndefined();
+    await expect(
+      assertCompatibilityPermitsRemoteMutations('CREATE_SEGMENT', { customerConnectionId: P32_CONN_ID })
+    ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
 
     // Now simulate MailWizz silently upgrading to synthetic 4.0.0 -> fail closed!
     const v4Report = await mailWizzCompatibilityValidator.validate({
+      customerConnectionId: P32_CONN_ID,
       client: new MailWizzClient({
         apiUrl: 'https://mw-mock.example.com/api/index.php',
         apiKey: 'mock-key-400',
@@ -357,18 +397,19 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
     expect(v4Report.mutationSafetyAllowed).toBe(false);
 
     await mailWizzCapabilityRegistry.saveCompatibilityReport({
+      customerConnectionId: P32_CONN_ID,
       report: v4Report,
       actorEmail: TEST_ACTOR,
     });
 
     process.env.ENABLE_MAILWIZZ_MUTATIONS = 'true';
     resetEnvCacheForTests();
-    await expect(assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE')).rejects.toBeInstanceOf(
-      UnsafeOperationBlockedError
-    );
-    await expect(createConfiguredMutationClient('UNSUBSCRIBE')).rejects.toBeInstanceOf(
-      UnsafeOperationBlockedError
-    );
+    await expect(
+      assertCompatibilityPermitsRemoteMutations('UNSUBSCRIBE', { customerConnectionId: P32_CONN_ID })
+    ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
+    await expect(
+      createConfiguredMutationClient('UNSUBSCRIBE', P32_CONN_ID)
+    ).rejects.toBeInstanceOf(UnsafeOperationBlockedError);
 
     // Confirm historical EngagementEvent survived simulated compatibility transitions untouched
     const histAfter = await prisma.engagementEvent.findUnique({ where: { id: P32_EVENT_ID } });
@@ -438,10 +479,13 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
     });
 
     await runMailWizzSync({
+      customerConnectionId: P32_CONN_ID,
       client: syncClient,
     });
-    const cfgAfter = await prisma.appConfig.findUnique({ where: { id: 'default' } });
-    expect(cfgAfter?.mailwizzDetectedVersion).toBe('3.1.0');
+    const connAfter = await prisma.mailWizzCustomerConnection.findUnique({
+      where: { id: P32_CONN_ID },
+    });
+    expect(connAfter?.detectedVersion).toBe('3.1.0');
 
     const sub = await prisma.subscriber.findUnique({ where: { id: P32_SUB_ID } });
     expect(sub?.status).toBe('UNKNOWN');
@@ -461,9 +505,12 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
         },
       },
     });
-    await prisma.appConfig.update({
-      where: { id: 'default' },
-      data: { mailwizzDetectedVersion: null },
+    await prisma.mailWizzCustomerConnection.update({
+      where: { id: P32_CONN_ID },
+      data: { detectedVersion: null },
+    });
+    await prisma.connectionCapabilityReport.deleteMany({
+      where: { customerConnectionId: P32_CONN_ID },
     });
 
     const cookieHeader = `${SESSION_COOKIE_NAME}=${rawToken}`;
@@ -477,6 +524,7 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
         'x-csrf-token': csrfToken,
       },
       body: JSON.stringify({
+        customerConnectionId: P32_CONN_ID,
         action: 'SET_CONFIGURED_VERSION',
         configuredVersion: '3.2.0-beta',
         notes: 'Staging probe validation',
@@ -497,6 +545,7 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
         'x-csrf-token': csrfToken,
       },
       body: JSON.stringify({
+        customerConnectionId: P32_CONN_ID,
         action: 'APPROVE_VERSION',
         version: '3.2.0-beta',
       }),
@@ -505,15 +554,19 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
     expect(badApproveRes.status).toBe(400);
 
     // GET endpoint reflects saved unverified version cleanly
-    const getReq = new NextRequest('http://localhost/api/compatibility', {
-      method: 'GET',
-      headers: { Cookie: cookieHeader },
-    });
+    const getReq = new NextRequest(
+      `http://localhost/api/compatibility?customerConnectionId=${P32_CONN_ID}`,
+      {
+        method: 'GET',
+        headers: { Cookie: cookieHeader },
+      }
+    );
     const getRes = await compatGet(getReq);
     expect(getRes.status).toBe(200);
 
     // Clear configured version back to baseline clean state
     await mailWizzCapabilityRegistry.saveConfiguredVersion({
+      customerConnectionId: P32_CONN_ID,
       configuredVersion: null,
       notes: null,
       actorEmail: TEST_ACTOR,
@@ -690,7 +743,7 @@ describe('Phase 3.2 Future-Version Compatibility & Governance Integration', () =
       }) as typeof fetch,
     });
 
-    await runMailWizzSync({ client: probeSyncClient });
+    await runMailWizzSync({ customerConnectionId: P32_CONN_ID, client: probeSyncClient });
 
     // Confirm failed `giveup` delivery attempt did NOT record DELIVERED (only 1 delivered row from 2026-01-06)
     const deliveredEvents = await prisma.engagementEvent.findMany({

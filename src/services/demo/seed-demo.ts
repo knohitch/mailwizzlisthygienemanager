@@ -1,9 +1,12 @@
 import { prisma } from '@/lib/db';
-import { hashEmail, sha256Hex } from '@/services/security/crypto';
+import { encryptSecret, hashEmail, sha256Hex } from '@/services/security/crypto';
 import { ensureCapabilityMatrixInitialized } from '@/services/mailwizz/capability-matrix';
 import { recomputeAllHygieneClassifications } from '@/services/analysis/classifier';
 import { reconcileListsAndCampaigns } from '@/services/analysis/reconciliation';
 import type { EngagementEventType, Prisma, SubscriberStatus } from '@prisma/client';
+
+const DEMO_INSTALLATION_ID = 'inst-demo-synthetic';
+const DEMO_CONNECTION_ID = 'conn-demo-synthetic';
 
 function seededNumber(seed: number): number {
   const x = Math.sin(seed * 9301 + 49297) * 233280;
@@ -19,20 +22,26 @@ export async function seedSyntheticDemoData(options?: {
   eventsCreated: number;
 }> {
   if (!options?.allowWhenRealDataExists) {
-    const [realLists, realSubscribers, cfg] = await Promise.all([
+    const [realLists, realSubscribers, realConnections, cfg] = await Promise.all([
       prisma.mailingList.count({ where: { isDemoData: false } }),
       prisma.subscriber.count({ where: { isDemoData: false } }),
+      prisma.mailWizzCustomerConnection.count({
+        where: { isDemoData: false, isQuarantine: false },
+      }),
       prisma.appConfig.findUnique({ where: { id: 'default' } }),
     ]);
 
-    if (realLists > 0 || realSubscribers > 0 || Boolean(cfg?.mailwizzApiUrl)) {
+    if (
+      realLists > 0 ||
+      realSubscribers > 0 ||
+      realConnections > 0 ||
+      Boolean(cfg?.mailwizzApiUrl)
+    ) {
       throw new Error(
-        `Refusing to seed synthetic demo data because real (non-demo) MailWizz data or connection configuration already exists (realLists=${realLists}, realSubscribers=${realSubscribers}).`
+        `Refusing to seed synthetic demo data because real (non-demo) MailWizz data or customer connection configuration already exists (realConnections=${realConnections}, realLists=${realLists}, realSubscribers=${realSubscribers}).`
       );
     }
   }
-
-  await ensureCapabilityMatrixInitialized();
 
   // Clear existing demo data cleanly before re-seeding
   await prisma.engagementEvent.deleteMany({ where: { isDemoData: true } });
@@ -43,6 +52,96 @@ export async function seedSyntheticDemoData(options?: {
   await prisma.directMailDailyMetric.deleteMany({ where: { isDemoData: true } });
   await prisma.inboxPlacementTest.deleteMany({ where: { isDemoData: true } });
   await prisma.postmasterStat.deleteMany({ where: { isDemoData: true } });
+
+  await prisma.mailWizzInstallation.upsert({
+    where: { id: DEMO_INSTALLATION_ID },
+    update: {
+      name: 'Demo MailWizz Installation',
+      baseUrl: 'https://demo-mailwizz.local/api/index.php',
+      hostname: 'demo-mailwizz.local',
+      isActive: true,
+    },
+    create: {
+      id: DEMO_INSTALLATION_ID,
+      name: 'Demo MailWizz Installation',
+      baseUrl: 'https://demo-mailwizz.local/api/index.php',
+      hostname: 'demo-mailwizz.local',
+      isActive: true,
+    },
+  });
+
+  await prisma.mailWizzCustomerConnection.upsert({
+    where: { id: DEMO_CONNECTION_ID },
+    update: {
+      installationId: DEMO_INSTALLATION_ID,
+      customerName: 'Demo Customer Account',
+      customerSlug: 'demo-customer-account',
+      isEnabled: true,
+      isPrimary: false,
+      isQuarantine: false,
+      isDemoData: true,
+      status: 'CONNECTED',
+      detectedVersion: '3.0.5',
+      notes: 'Isolated synthetic demo customer account.',
+    },
+    create: {
+      id: DEMO_CONNECTION_ID,
+      installationId: DEMO_INSTALLATION_ID,
+      customerName: 'Demo Customer Account',
+      customerSlug: 'demo-customer-account',
+      isEnabled: true,
+      isPrimary: false,
+      isQuarantine: false,
+      isDemoData: true,
+      status: 'CONNECTED',
+      detectedVersion: '3.0.5',
+      notes: 'Isolated synthetic demo customer account.',
+    },
+  });
+
+  await prisma.mailWizzConnectionHealth.upsert({
+    where: { customerConnectionId: DEMO_CONNECTION_ID },
+    update: {
+      lastCheckedAt: new Date(),
+      lastSuccessAt: new Date(),
+      detectedVersion: '3.0.5',
+      verifiedAuthMode: 'demo-synthetic',
+    },
+    create: {
+      customerConnectionId: DEMO_CONNECTION_ID,
+      lastCheckedAt: new Date(),
+      lastSuccessAt: new Date(),
+      detectedVersion: '3.0.5',
+      verifiedAuthMode: 'demo-synthetic',
+    },
+  });
+
+  await prisma.connectionSyncState.upsert({
+    where: { customerConnectionId: DEMO_CONNECTION_ID },
+    update: { isPaused: false },
+    create: { customerConnectionId: DEMO_CONNECTION_ID, isPaused: false },
+  });
+
+  const existingDemoCred = await prisma.mailWizzConnectionCredential.findFirst({
+    where: { customerConnectionId: DEMO_CONNECTION_ID, isActive: true },
+  });
+  if (!existingDemoCred) {
+    const demoKey = 'demo-synthetic-api-key-not-live';
+    await prisma.mailWizzConnectionCredential.create({
+      data: {
+        customerConnectionId: DEMO_CONNECTION_ID,
+        apiKeyEnc: encryptSecret(demoKey),
+        apiKeyLast4: demoKey.slice(-4),
+        apiKeyFingerprint: sha256Hex(demoKey),
+        status: 'ACTIVE',
+        isActive: true,
+        version: 1,
+        createdByEmail: 'system-demo@local',
+      },
+    });
+  }
+
+  await ensureCapabilityMatrixInitialized(DEMO_CONNECTION_ID);
 
   await prisma.appConfig.upsert({
     where: { id: 'default' },
@@ -101,6 +200,7 @@ export async function seedSyntheticDemoData(options?: {
   for (const def of listDefs) {
     const ml = await prisma.mailingList.create({
       data: {
+        customerConnectionId: DEMO_CONNECTION_ID,
         listUid: def.listUid,
         name: def.name,
         displayName: def.displayName,
@@ -151,6 +251,7 @@ export async function seedSyntheticDemoData(options?: {
 
     const savedCamp = await prisma.campaign.create({
       data: {
+        customerConnectionId: DEMO_CONNECTION_ID,
         campaignUid: c.uid,
         mailingListId: ml.id,
         listUid: ml.listUid,
@@ -202,6 +303,7 @@ export async function seedSyntheticDemoData(options?: {
   for (const ml of createdLists) {
     await prisma.listSegment.create({
       data: {
+        customerConnectionId: DEMO_CONNECTION_ID,
         mailingListId: ml.id,
         segmentUid: `${ml.listUid}-seg-confirmed`,
         name: 'Confirmed Subscribers (Native)',
@@ -252,6 +354,7 @@ export async function seedSyntheticDemoData(options?: {
           : daysAgo(210 + (i % 160));
 
       subscriberRows.push({
+        customerConnectionId: DEMO_CONNECTION_ID,
         mailingListId: ml.id,
         subscriberUid: subUid,
         email,
@@ -299,6 +402,7 @@ export async function seedSyntheticDemoData(options?: {
     if (!listMeta.withHistoricalEvents) {
       if (sub.status === 'CONFIRMED' && numMatch <= 2 && listCampaigns[0]) {
         eventRows.push({
+          customerConnectionId: DEMO_CONNECTION_ID,
           subscriberId: sub.id,
           campaignId: listCampaigns[0].id,
           mailingListId: sub.mailingListId,
@@ -322,6 +426,7 @@ export async function seedSyntheticDemoData(options?: {
     // Hard bounces (~1.5% of confirmed)
     if (cohort === 1 && listCampaigns[0]) {
       eventRows.push({
+        customerConnectionId: DEMO_CONNECTION_ID,
         subscriberId: sub.id,
         campaignId: listCampaigns[0].id,
         mailingListId: sub.mailingListId,
@@ -339,6 +444,7 @@ export async function seedSyntheticDemoData(options?: {
     // Complaints (~0.5%)
     if (cohort === 2 && listCampaigns[0]) {
       eventRows.push({
+        customerConnectionId: DEMO_CONNECTION_ID,
         subscriberId: sub.id,
         campaignId: listCampaigns[0].id,
         mailingListId: sub.mailingListId,
@@ -360,6 +466,7 @@ export async function seedSyntheticDemoData(options?: {
 
     for (const camp of campaignsToDeliver) {
       eventRows.push({
+        customerConnectionId: DEMO_CONNECTION_ID,
         subscriberId: sub.id,
         campaignId: camp.id,
         mailingListId: sub.mailingListId,
@@ -377,6 +484,7 @@ export async function seedSyntheticDemoData(options?: {
       eventType: EngagementEventType
     ) => {
       eventRows.push({
+        customerConnectionId: DEMO_CONNECTION_ID,
         subscriberId: sub.id,
         campaignId: camp.id,
         mailingListId: sub.mailingListId,
@@ -429,8 +537,8 @@ export async function seedSyntheticDemoData(options?: {
     });
   }
 
-  await recomputeAllHygieneClassifications();
-  await reconcileListsAndCampaigns();
+  await recomputeAllHygieneClassifications(undefined, DEMO_CONNECTION_ID);
+  await reconcileListsAndCampaigns(undefined, DEMO_CONNECTION_ID);
 
   // Seed clearly-labeled synthetic Phase 3 Deliverability demo fixtures
   const dayUtc = (d: number) => {

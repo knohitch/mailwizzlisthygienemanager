@@ -13,18 +13,22 @@ import {
 const CompatibilityActionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('RUN_CHECK'),
+    customerConnectionId: z.string().trim().optional(),
   }),
   z.object({
     action: z.literal('SET_CONFIGURED_VERSION'),
+    customerConnectionId: z.string().trim().optional(),
     configuredVersion: z.string().trim().max(40).nullable(),
     notes: z.string().trim().max(500).optional(),
   }),
   z.object({
     action: z.literal('APPROVE_VERSION'),
+    customerConnectionId: z.string().trim().optional(),
     version: z.string().trim().min(1).max(40),
   }),
   z.object({
     action: z.literal('VERIFY_WRITE_CAPABILITY'),
+    customerConnectionId: z.string().trim().optional(),
     capabilityKey: z.enum(WRITABLE_CAPABILITY_KEYS),
     disposableListUid: z.string().trim().min(1).max(100),
     evidence: z.string().trim().min(5).max(500),
@@ -35,7 +39,9 @@ export async function GET(req: NextRequest) {
   const auth = await requireApiAuth(req, { rateLimitBucket: 'compatibility-read' });
   if (!auth.ok) return auth.response;
 
-  const data = await getCompatibilityDashboardData();
+  const customerConnectionId =
+    req.nextUrl.searchParams.get('customerConnectionId')?.trim() || undefined;
+  const data = await getCompatibilityDashboardData(customerConnectionId);
   return NextResponse.json(data);
 }
 
@@ -57,12 +63,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const connId = parsed.data.customerConnectionId;
+
     if (parsed.data.action === 'RUN_CHECK') {
       const report = await runReadOnlyCompatibilityCheck({
+        customerConnectionId: connId,
         actorEmail: auth.session.adminEmail,
         ipAddress: auth.ip,
       });
-      const updated = await getCompatibilityDashboardData();
+      const updated = await getCompatibilityDashboardData(connId ?? report.customerConnectionId ?? undefined);
       return NextResponse.json({
         ok: true,
         report,
@@ -72,12 +81,13 @@ export async function POST(req: NextRequest) {
 
     if (parsed.data.action === 'SET_CONFIGURED_VERSION') {
       await mailWizzCapabilityRegistry.saveConfiguredVersion({
+        customerConnectionId: connId,
         configuredVersion: parsed.data.configuredVersion?.trim() || null,
         notes: parsed.data.notes ?? null,
         actorEmail: auth.session.adminEmail,
         ipAddress: auth.ip,
       });
-      const updated = await getCompatibilityDashboardData();
+      const updated = await getCompatibilityDashboardData(connId);
       return NextResponse.json({
         ok: true,
         data: updated,
@@ -85,7 +95,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (parsed.data.action === 'VERIFY_WRITE_CAPABILITY') {
-      const current = await getCompatibilityDashboardData();
+      const current = await getCompatibilityDashboardData(connId);
       const latestReport = current.report;
       const activeVersion = latestReport.versionInfo.effectiveVersion;
       if (
@@ -105,6 +115,7 @@ export async function POST(req: NextRequest) {
       }
 
       await mailWizzCapabilityRegistry.recordDisposableWriteVerification({
+        customerConnectionId: connId ?? latestReport.customerConnectionId ?? undefined,
         capabilityKey: parsed.data.capabilityKey,
         approvedVersion: activeVersion,
         disposableListUid: parsed.data.disposableListUid,
@@ -113,7 +124,7 @@ export async function POST(req: NextRequest) {
         ipAddress: auth.ip,
       });
 
-      const refreshed = await getCompatibilityDashboardData();
+      const refreshed = await getCompatibilityDashboardData(connId);
       return NextResponse.json({
         ok: true,
         data: refreshed,
@@ -121,7 +132,7 @@ export async function POST(req: NextRequest) {
     }
 
     // APPROVE_VERSION — allowed ONLY after latest read-only verification passed critical contracts
-    const current = await getCompatibilityDashboardData();
+    const current = await getCompatibilityDashboardData(connId);
     const latestReport = current.report;
     const criticalSyncOk = latestReport.capabilities
       .filter((c) => c.criticalForSync)
@@ -143,13 +154,14 @@ export async function POST(req: NextRequest) {
     }
 
     await mailWizzCapabilityRegistry.approveVersion({
+      customerConnectionId: connId ?? latestReport.customerConnectionId ?? undefined,
       version: parsed.data.version,
       actorEmail: auth.session.adminEmail,
       ipAddress: auth.ip,
       report: latestReport,
     });
 
-    const refreshed = await getCompatibilityDashboardData();
+    const refreshed = await getCompatibilityDashboardData(connId);
     return NextResponse.json({
       ok: true,
       data: refreshed,

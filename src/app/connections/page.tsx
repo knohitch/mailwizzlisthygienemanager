@@ -1,0 +1,33 @@
+import { redirect } from 'next/navigation';
+import { prisma } from '@/lib/db';
+import { getServerSession } from '@/services/security/auth';
+import { deriveCsrfToken } from '@/services/security/csrf';
+import { isMailWizzMutationsEnabled } from '@/services/mutations/gate';
+import { listCustomerConnections } from '@/services/mailwizz/connections';
+import { ConnectionsView } from '@/components/ConnectionsView';
+
+export const dynamic = 'force-dynamic';
+
+export default async function ConnectionsPage() {
+  const session = await getServerSession();
+  if (!session) redirect('/login');
+
+  const [cfg, initialList] = await Promise.all([
+    prisma.appConfig.upsert({
+      where: { id: 'default' },
+      update: {},
+      create: { id: 'default' },
+    }),
+    listCustomerConnections({ page: 1, pageSize: 25 }),
+  ]);
+
+  return (
+    <ConnectionsView
+      adminEmail={session.adminEmail}
+      csrfToken={deriveCsrfToken(session)}
+      isDemoMode={cfg.isDemoMode}
+      phase1ReadOnly={!isMailWizzMutationsEnabled()}
+      initialData={JSON.parse(JSON.stringify(initialList))}
+    />
+  );
+}

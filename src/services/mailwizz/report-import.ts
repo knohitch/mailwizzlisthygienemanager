@@ -36,6 +36,7 @@ const MAX_REPORT_IMPORT_ROWS = 100_000;
 const FORBIDDEN_CSV_HEADERS = new Set(['__proto__', 'constructor', 'prototype']);
 
 export async function importVerifiedCampaignReport(params: {
+  customerConnectionId?: string;
   format: 'csv' | 'json';
   content: string;
   defaultCampaignUid?: string;
@@ -76,7 +77,27 @@ export async function importVerifiedCampaignReport(params: {
   let skippedUnmatchedCount = 0;
   let duplicateCount = 0;
 
+  const { resolveUnambiguousConnectionId } = await import('./client-factory');
+  let targetConnId = params.customerConnectionId?.trim() || undefined;
+  if (params.mailingListId) {
+    const ml = await prisma.mailingList.findUnique({
+      where: { id: params.mailingListId },
+      select: { id: true, customerConnectionId: true },
+    });
+    if (!ml) {
+      throw new Error(`Mailing list "${params.mailingListId}" not found.`);
+    }
+    if (targetConnId && ml.customerConnectionId !== targetConnId) {
+      throw new Error(
+        `Cross-customer mismatch: mailing list "${params.mailingListId}" does not belong to customerConnectionId "${targetConnId}".`
+      );
+    }
+    targetConnId = ml.customerConnectionId;
+  }
+  const connId = await resolveUnambiguousConnectionId(targetConnId);
+
   const campaigns = await prisma.campaign.findMany({
+    where: { customerConnectionId: connId },
     select: { id: true, campaignUid: true, mailingListId: true },
   });
   const campaignByUid = new Map(campaigns.map((c) => [c.campaignUid, c]));
@@ -107,6 +128,7 @@ export async function importVerifiedCampaignReport(params: {
 
     const subscriber = await prisma.subscriber.findFirst({
       where: {
+        customerConnectionId: connId,
         ...(params.mailingListId ? { mailingListId: params.mailingListId } : {}),
         ...(parsed.data.subscriber_uid
           ? { subscriberUid: parsed.data.subscriber_uid }
@@ -127,12 +149,13 @@ export async function importVerifiedCampaignReport(params: {
       : undefined;
 
     const dedupeKey = sha256Hex(
-      `VERIFIED_EXPORT|${subscriber.id}|${campaign?.campaignUid ?? 'NONE'}|${parsed.data.event_type}|${occurredAt.toISOString()}`
+      `VERIFIED_EXPORT|${connId}|${subscriber.id}|${campaign?.campaignUid ?? 'NONE'}|${parsed.data.event_type}|${occurredAt.toISOString()}`
     );
 
     try {
       await prisma.engagementEvent.create({
         data: {
+          customerConnectionId: connId,
           subscriberId: subscriber.id,
           campaignId: campaign?.id ?? null,
           mailingListId: subscriber.mailingListId,

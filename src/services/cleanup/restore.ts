@@ -21,6 +21,7 @@ export async function pauseCleanupOperation(operationId: string, actorEmail: str
     data: { status: 'PAUSED' },
   });
   await recordAuditLog({
+    customerConnectionId: op.customerConnectionId,
     actorEmail,
     action: 'CLEANUP_PAUSE_REQUESTED',
     resourceType: 'CleanupOperation',
@@ -48,7 +49,12 @@ export async function resumeCleanupOperation(operationId: string, actorEmail: st
 
   const job = await enqueueJob({
     type: 'HYGIENE_EXECUTION',
-    payload: { operationId: op.id, actorEmail },
+    customerConnectionId: op.customerConnectionId,
+    payload: {
+      operationId: op.id,
+      customerConnectionId: op.customerConnectionId,
+      actorEmail,
+    },
     maxAttempts: 2,
   });
 
@@ -58,6 +64,7 @@ export async function resumeCleanupOperation(operationId: string, actorEmail: st
   });
 
   await recordAuditLog({
+    customerConnectionId: op.customerConnectionId,
     actorEmail,
     action: 'CLEANUP_RESUMED',
     resourceType: 'CleanupOperation',
@@ -102,6 +109,7 @@ export async function cancelCleanupOperation(operationId: string, actorEmail: st
   });
 
   await recordAuditLog({
+    customerConnectionId: op.customerConnectionId,
     actorEmail,
     action: 'CLEANUP_CANCELLED',
     resourceType: 'CleanupOperation',
@@ -114,6 +122,7 @@ export async function cancelCleanupOperation(operationId: string, actorEmail: st
 }
 
 export async function restoreSuppressedSubscribers(params: {
+  customerConnectionId?: string;
   operationId?: string;
   subscriberIds?: string[];
   adminApproved: boolean;
@@ -132,6 +141,7 @@ export async function restoreSuppressedSubscribers(params: {
 
   let targetIds = params.subscriberIds ?? [];
   let unsubscribeAuditPreserved = false;
+  let scopedConnectionId = params.customerConnectionId?.trim() || undefined;
 
   if (params.operationId) {
     const op = await prisma.cleanupOperation.findUnique({
@@ -145,9 +155,17 @@ export async function restoreSuppressedSubscribers(params: {
     });
     if (!op) throw new Error('Cleanup operation not found.');
 
+    if (scopedConnectionId && op.customerConnectionId !== scopedConnectionId) {
+      throw new Error(
+        'Customer isolation violation: cleanup operation belongs to a different customer connection.'
+      );
+    }
+    scopedConnectionId = op.customerConnectionId;
+
     if (op.actionType === 'UNSUBSCRIBE') {
       unsubscribeAuditPreserved = true;
       await recordAuditLog({
+        customerConnectionId: op.customerConnectionId,
         actorEmail: params.actorEmail,
         action: 'UNSUBSCRIBE_ROLLBACK_BLOCKED_SAFETY',
         resourceType: 'CleanupOperation',
@@ -179,9 +197,13 @@ export async function restoreSuppressedSubscribers(params: {
   }
 
   const candidates = await prisma.subscriber.findMany({
-    where: { id: { in: targetIds } },
+    where: {
+      id: { in: targetIds },
+      ...(scopedConnectionId ? { customerConnectionId: scopedConnectionId } : {}),
+    },
     select: {
       id: true,
+      customerConnectionId: true,
       subscriberUid: true,
       email: true,
       status: true,
@@ -191,6 +213,20 @@ export async function restoreSuppressedSubscribers(params: {
       hardBouncesCount: true,
     },
   });
+
+  if (scopedConnectionId && targetIds.length > candidates.length) {
+    throw new Error(
+      'Customer isolation violation: one or more subscriber IDs do not belong to the requested customer connection.'
+    );
+  }
+  const distinctConnections = new Set(candidates.map((c) => c.customerConnectionId));
+  if (distinctConnections.size > 1) {
+    throw new Error(
+      'Customer isolation violation: cannot restore suppressions across multiple customer connections in one call.'
+    );
+  }
+  const resolvedConnectionId =
+    scopedConnectionId ?? Array.from(distinctConnections)[0] ?? null;
 
   const eligibleIds: string[] = [];
   const blockedReasons: Array<{
@@ -249,6 +285,7 @@ export async function restoreSuppressedSubscribers(params: {
   }
 
   await recordAuditLog({
+    customerConnectionId: resolvedConnectionId,
     actorEmail: params.actorEmail,
     action: 'SUPPRESSION_RESTORED',
     resourceType: 'SubscriberBatch',

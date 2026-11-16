@@ -13,9 +13,61 @@ export async function executeSyncJob(job: SyncJob): Promise<void> {
   try {
     const payload = (job.payloadJson ?? {}) as Record<string, unknown>;
 
+    if (job.customerConnectionId) {
+      const conn = await prisma.mailWizzCustomerConnection.findUnique({
+        where: { id: job.customerConnectionId },
+        include: {
+          syncState: true,
+          credentials: {
+            where: { isActive: true, status: 'ACTIVE' },
+            orderBy: { version: 'desc' },
+            take: 1,
+          },
+        },
+      });
+      const activeCred = conn?.credentials[0];
+      let abortReason: string | null = null;
+      if (!conn || conn.isQuarantine || !conn.isEnabled || conn.status === 'DISABLED') {
+        abortReason = `Cancelled: customer connection ${job.customerConnectionId} is disabled or quarantined.`;
+      } else if (conn.syncState?.isPaused) {
+        abortReason = `Cancelled: sync is paused for customer connection ${conn.customerName}.`;
+      } else if (
+        job.credentialVersion !== null &&
+        job.credentialVersion !== undefined &&
+        (!activeCred || activeCred.version !== job.credentialVersion)
+      ) {
+        abortReason = `Cancelled: API key rotated or revoked before execution (expected credential v${job.credentialVersion}, active=${activeCred?.version ?? 'none'}).`;
+      }
+      if (abortReason) {
+        await prisma.syncJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'CANCELLED',
+            lastError: abortReason,
+            progressMessage: abortReason,
+            finishedAt: new Date(),
+            lockedBy: null,
+          },
+        });
+        logger.warn('SyncJob aborted before execution due to connection/credential state', {
+          jobId: job.id,
+          customerConnectionId: job.customerConnectionId,
+          reason: abortReason,
+        });
+        return;
+      }
+    }
+
     switch (job.type) {
       case 'FULL_SYNC': {
+        const connId =
+          job.customerConnectionId ??
+          (typeof payload.customerConnectionId === 'string'
+            ? payload.customerConnectionId
+            : undefined);
         const result = await runMailWizzSync({
+          customerConnectionId: connId,
+          expectedCredentialVersion: job.credentialVersion ?? undefined,
           onProgress: (p) => updateJobProgress(job.id, p),
         });
         await completeJob(job.id, { ...result });
@@ -27,7 +79,14 @@ export async function executeSyncJob(job: SyncJob): Promise<void> {
         if (!listUid) {
           throw new Error('LIST_SYNC job missing required listUid payload.');
         }
+        const connId =
+          job.customerConnectionId ??
+          (typeof payload.customerConnectionId === 'string'
+            ? payload.customerConnectionId
+            : undefined);
         const result = await runMailWizzSync({
+          customerConnectionId: connId,
+          expectedCredentialVersion: job.credentialVersion ?? undefined,
           onlyListUid: listUid,
           onProgress: (p) => updateJobProgress(job.id, p),
         });
@@ -43,13 +102,18 @@ export async function executeSyncJob(job: SyncJob): Promise<void> {
         });
         const mailingListId =
           typeof payload.mailingListId === 'string' ? payload.mailingListId : undefined;
-        const result = await recomputeAllHygieneClassifications(mailingListId);
+        const connId =
+          job.customerConnectionId ??
+          (typeof payload.customerConnectionId === 'string'
+            ? payload.customerConnectionId
+            : undefined);
+        const result = await recomputeAllHygieneClassifications(mailingListId, connId);
         await updateJobProgress(job.id, {
           current: 80,
           total: 100,
           message: 'Reconciling list & campaign counters...',
         });
-        await reconcileListsAndCampaigns(mailingListId);
+        await reconcileListsAndCampaigns(mailingListId, connId);
         await completeJob(job.id, { ...result });
         break;
       }
@@ -135,6 +199,11 @@ export async function executeSyncJob(job: SyncJob): Promise<void> {
 
       case 'SUPPRESSION_RESTORE': {
         const result = await restoreSuppressedSubscribers({
+          customerConnectionId:
+            job.customerConnectionId ??
+            (typeof payload.customerConnectionId === 'string'
+              ? payload.customerConnectionId
+              : undefined),
           operationId:
             typeof payload.operationId === 'string' ? payload.operationId : undefined,
           subscriberIds: Array.isArray(payload.subscriberIds)

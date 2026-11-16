@@ -326,6 +326,7 @@ export function buildPrismaWhereFromFilter(
 
 export async function queryFilteredSubscribers(params: {
   filter: FilterGroup;
+  customerConnectionId?: string;
   mailingListId?: string;
   explicitSubscriberIds?: string[];
   page?: number;
@@ -337,6 +338,9 @@ export async function queryFilteredSubscribers(params: {
   const filterWhere = buildPrismaWhereFromFilter(params.filter);
   const clauses: Prisma.SubscriberWhereInput[] = [];
   if (Object.keys(filterWhere).length > 0) clauses.push(filterWhere);
+  if (params.customerConnectionId) {
+    clauses.push({ customerConnectionId: params.customerConnectionId });
+  }
   if (params.mailingListId) clauses.push({ mailingListId: params.mailingListId });
   if (params.explicitSubscriberIds && params.explicitSubscriberIds.length > 0) {
     clauses.push({ id: { in: params.explicitSubscriberIds } });
@@ -359,7 +363,15 @@ export async function queryFilteredSubscribers(params: {
       take: pageSize,
       include: {
         mailingList: {
-          select: { id: true, listUid: true, name: true },
+          select: {
+            id: true,
+            listUid: true,
+            name: true,
+            customerConnectionId: true,
+            customerConnection: {
+              select: { id: true, customerName: true, customerSlug: true },
+            },
+          },
         },
       },
     }),

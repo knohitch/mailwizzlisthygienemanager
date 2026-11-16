@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireApiAuth } from '@/lib/api-auth';
 import { enqueueJob } from '@/services/jobs/queue';
+import { resolveUnambiguousConnectionId } from '@/services/mailwizz/client-factory';
 import { recordAuditLog } from '@/services/security/audit';
 import { seedSyntheticDemoData } from '@/services/demo/seed-demo';
 
@@ -15,6 +16,7 @@ const SyncActionSchema = z.object({
     'SEED_DEMO_DATA',
     'CLEAR_DEMO_DATA',
   ]),
+  customerConnectionId: z.string().trim().optional(),
   listUid: z.string().trim().optional(),
 });
 
@@ -22,9 +24,18 @@ export async function GET(req: NextRequest) {
   const auth = await requireApiAuth(req, { rateLimitBucket: 'sync-read' });
   if (!auth.ok) return auth.response;
 
+  const customerConnectionId =
+    req.nextUrl.searchParams.get('customerConnectionId')?.trim() || undefined;
+
   const jobs = await prisma.syncJob.findMany({
+    where: customerConnectionId ? { customerConnectionId } : undefined,
     orderBy: { createdAt: 'desc' },
     take: 25,
+    include: {
+      customerConnection: {
+        select: { id: true, customerName: true, customerSlug: true },
+      },
+    },
   });
 
   return NextResponse.json({ jobs });
@@ -50,7 +61,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid sync action.' }, { status: 400 });
   }
 
-  const { action, listUid } = parsed.data;
+  const { action, listUid, customerConnectionId } = parsed.data;
 
   if (action === 'SEED_DEMO_DATA') {
     if (
@@ -98,6 +109,7 @@ export async function POST(req: NextRequest) {
     await prisma.directMailDailyMetric.deleteMany({ where: { isDemoData: true } });
     await prisma.inboxPlacementTest.deleteMany({ where: { isDemoData: true } });
     await prisma.postmasterStat.deleteMany({ where: { isDemoData: true } });
+    await prisma.mailWizzCustomerConnection.deleteMany({ where: { isDemoData: true } });
     await prisma.appConfig.update({
       where: { id: 'default' },
       data: { isDemoMode: false },
@@ -112,13 +124,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  let resolvedConnId: string | undefined = customerConnectionId;
   if (action === 'FULL_SYNC' || action === 'LIST_SYNC') {
-    const cfg = await prisma.appConfig.findUnique({ where: { id: 'default' } });
-    if (!cfg?.mailwizzApiUrl || !cfg?.mailwizzApiKeyEnc) {
+    try {
+      resolvedConnId = await resolveUnambiguousConnectionId(customerConnectionId);
+      const credCount = await prisma.mailWizzConnectionCredential.count({
+        where: {
+          customerConnectionId: resolvedConnId,
+          isActive: true,
+          status: 'ACTIVE',
+        },
+      });
+      if (credCount === 0) {
+        return NextResponse.json(
+          {
+            error:
+              'Selected MailWizz customer connection has no active API key. Configure one in Customer Connections before queueing a sync.',
+          },
+          { status: 400 }
+        );
+      }
+    } catch (err) {
       return NextResponse.json(
         {
           error:
-            'MailWizz API URL and API key must be configured in Settings before queueing a MailWizz sync.',
+            err instanceof Error
+              ? err.message
+              : 'MailWizz customer connection must be configured before queueing a MailWizz sync.',
         },
         { status: 400 }
       );
@@ -132,23 +164,33 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const job = await enqueueJob({
-    type: action,
-    payload: {
-      triggeredBy: auth.session.adminEmail,
-      ...(listUid ? { listUid } : {}),
-    },
-  });
+  try {
+    const job = await enqueueJob({
+      type: action,
+      customerConnectionId: resolvedConnId,
+      payload: {
+        triggeredBy: auth.session.adminEmail,
+        ...(resolvedConnId ? { customerConnectionId: resolvedConnId } : {}),
+        ...(listUid ? { listUid } : {}),
+      },
+    });
 
-  await recordAuditLog({
-    actorEmail: auth.session.adminEmail,
-    action: `ENQUEUE_${action}`,
-    resourceType: 'SyncJob',
-    resourceId: job.id,
-    outcome: 'SUCCESS',
-    ipAddress: auth.ip,
-    details: { listUid: listUid ?? null },
-  });
+    await recordAuditLog({
+      customerConnectionId: resolvedConnId,
+      actorEmail: auth.session.adminEmail,
+      action: `ENQUEUE_${action}`,
+      resourceType: 'SyncJob',
+      resourceId: job.id,
+      outcome: 'SUCCESS',
+      ipAddress: auth.ip,
+      details: { customerConnectionId: resolvedConnId ?? null, listUid: listUid ?? null },
+    });
 
-  return NextResponse.json({ ok: true, job }, { status: 202 });
+    return NextResponse.json({ ok: true, job }, { status: 202 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Failed to enqueue job.' },
+      { status: 400 }
+    );
+  }
 }

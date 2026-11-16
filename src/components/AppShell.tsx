@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   LogOut,
   MailCheck,
+  PlugZap,
   Settings,
   ShieldCheck,
 } from 'lucide-react';
@@ -90,6 +91,18 @@ export function AppShell({
             >
               <LayoutDashboard className="h-4 w-4" />
               Dashboard
+            </Link>
+            <Link
+              href="/connections"
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                pathname.startsWith('/connections')
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:bg-slate-100'
+              )}
+            >
+              <PlugZap className="h-4 w-4" />
+              Connections
             </Link>
             <Link
               href="/cleanup"

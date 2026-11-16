@@ -236,6 +236,14 @@ export function SettingsView({
           </p>
         </div>
 
+        <Card className="border-indigo-200 bg-indigo-50/70 p-4 text-xs text-indigo-950">
+          <strong>Multi-Customer Mode Enabled:</strong> Add, validate, rotate, pause, or isolate multiple MailWizz customer API accounts in{' '}
+          <a href="/connections" className="font-semibold underline hover:text-indigo-700">
+            Customer Connections
+          </a>
+          . Global hygiene rules configured below serve as system defaults.
+        </Card>
+
         {statusMsg && (
           <div
             role="status"

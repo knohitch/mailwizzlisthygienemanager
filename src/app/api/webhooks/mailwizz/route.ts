@@ -3,13 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import {
-  decryptSecret,
   sha256Hex,
   timingSafeEqualString,
 } from '@/services/security/crypto';
 import { checkRateLimit, getClientIp } from '@/services/security/rate-limit';
 import { logger } from '@/services/security/logger';
 import { mailWizzV3Adapter } from '@/services/mailwizz/adapter-v3';
+import { resolveUnambiguousConnectionId } from '@/services/mailwizz/client-factory';
+import { getDecryptedWebhookSecretForConnection } from '@/services/mailwizz/connections';
 import type { EngagementEventType } from '@prisma/client';
 
 const MAX_WEBHOOK_ITEMS = 500;
@@ -62,15 +63,63 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const cfg = await prisma.appConfig.findUnique({ where: { id: 'default' } });
+  const sp = req.nextUrl.searchParams;
+  const requestedConnId =
+    sp.get('connectionId')?.trim() ||
+    sp.get('customerConnectionId')?.trim() ||
+    req.headers.get('x-hygiene-connection-id')?.trim() ||
+    undefined;
+  const requestedSlug = sp.get('connectionSlug')?.trim() || undefined;
+
+  let connectionId: string;
+  try {
+    if (requestedSlug && !requestedConnId) {
+      const bySlug = await prisma.mailWizzCustomerConnection.findUnique({
+        where: { customerSlug: requestedSlug },
+        select: { id: true },
+      });
+      if (!bySlug) {
+        return NextResponse.json(
+          { error: 'Unknown customer webhook connectionSlug.' },
+          { status: 404 }
+        );
+      }
+      connectionId = bySlug.id;
+    } else {
+      connectionId = await resolveUnambiguousConnectionId(requestedConnId);
+    }
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Webhook target customerConnectionId is required when multiple connections exist.',
+      },
+      { status: 400 }
+    );
+  }
+
+  const conn = await prisma.mailWizzCustomerConnection.findUnique({
+    where: { id: connectionId },
+    select: { id: true, isEnabled: true, isQuarantine: true, status: true },
+  });
+  if (!conn || conn.isQuarantine || !conn.isEnabled || conn.status === 'DISABLED') {
+    return NextResponse.json(
+      { error: 'Customer webhook connection is disabled or unavailable.' },
+      { status: 403 }
+    );
+  }
+
   const env = getEnv();
-  const expectedSecret = cfg?.webhookSecretEnc
-    ? decryptSecret(cfg.webhookSecretEnc)
-    : env.MAILWIZZ_WEBHOOK_SECRET;
+  const connSecret = await getDecryptedWebhookSecretForConnection(connectionId);
+  const expectedSecret =
+    connSecret ??
+    (connectionId === 'conn-primary-default' ? env.MAILWIZZ_WEBHOOK_SECRET : null);
 
   if (!expectedSecret) {
     return NextResponse.json(
-      { error: 'MailWizz webhook secret is not configured.' },
+      { error: 'MailWizz webhook secret is not configured for this customer connection.' },
       { status: 503 }
     );
   }
@@ -152,15 +201,21 @@ export async function POST(req: NextRequest) {
     }
 
     const campRecord = await prisma.campaign.findUnique({
-      where: { campaignUid: item.campaignUid },
+      where: {
+        customerConnectionId_campaignUid: {
+          customerConnectionId: connectionId,
+          campaignUid: item.campaignUid,
+        },
+      },
       select: { id: true, mailingListId: true },
     });
 
     const subRecord = await prisma.subscriber.findFirst({
       where: {
+        customerConnectionId: connectionId,
         subscriberUid: item.subscriberUid,
         ...(item.listUid
-          ? { mailingList: { listUid: item.listUid } }
+          ? { mailingList: { customerConnectionId: connectionId, listUid: item.listUid } }
           : campRecord?.mailingListId
             ? { mailingListId: campRecord.mailingListId }
             : {}),
@@ -174,13 +229,14 @@ export async function POST(req: NextRequest) {
     }
 
     const dedupeKey = sha256Hex(
-      `WEBHOOK_LIVE|${subRecord.mailingListId}|${item.campaignUid}|${item.subscriberUid}|${eventType}|${replayToken}`
+      `WEBHOOK_LIVE|${connectionId}|${subRecord.mailingListId}|${item.campaignUid}|${item.subscriberUid}|${eventType}|${replayToken}`
     );
 
     await prisma.engagementEvent.upsert({
       where: { dedupeKey },
       update: {},
       create: {
+        customerConnectionId: connectionId,
         subscriberId: subRecord.id,
         campaignId: campRecord?.id ?? null,
         mailingListId: subRecord.mailingListId,

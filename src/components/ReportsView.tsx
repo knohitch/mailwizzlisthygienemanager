@@ -13,6 +13,7 @@ export function ReportsView({
   csrfToken,
   isDemoMode,
   phase1ReadOnly,
+  connections = [],
   lists,
   initialSummary,
 }: {
@@ -20,21 +21,28 @@ export function ReportsView({
   csrfToken: string;
   isDemoMode: boolean;
   phase1ReadOnly: boolean;
-  lists: Array<{ id: string; name: string }>;
+  connections?: Array<{ id: string; customerName: string; customerSlug: string }>;
+  lists: Array<{ id: string; name: string; customerConnectionId?: string }>;
   initialSummary: ReportsSummary;
 }) {
+  const [selectedConnectionId, setSelectedConnectionId] = useState('');
   const [selectedListId, setSelectedListId] = useState('');
   const [maskPii, setMaskPii] = useState(true);
   const [summary, setSummary] = useState<ReportsSummary>(initialSummary);
   const [loading, setLoading] = useState(false);
 
-  async function reloadSummary(nextListId: string) {
+  const visibleLists = selectedConnectionId
+    ? lists.filter((l) => l.customerConnectionId === selectedConnectionId)
+    : lists;
+
+  async function reloadSummary(nextListId: string, nextConnectionId = selectedConnectionId) {
     setSelectedListId(nextListId);
     setLoading(true);
     try {
-      const url = nextListId
-        ? `/api/reports/hygiene?mailingListId=${encodeURIComponent(nextListId)}`
-        : '/api/reports/hygiene';
+      const sp = new URLSearchParams();
+      if (nextConnectionId) sp.set('customerConnectionId', nextConnectionId);
+      if (nextListId) sp.set('mailingListId', nextListId);
+      const url = sp.toString() ? `/api/reports/hygiene?${sp.toString()}` : '/api/reports/hygiene';
       const res = await fetch(url);
       if (res.ok) setSummary(await res.json());
     } finally {
@@ -48,6 +56,7 @@ export function ReportsView({
       format: 'csv',
       mask: String(maskPii),
     });
+    if (selectedConnectionId) params.set('customerConnectionId', selectedConnectionId);
     if (selectedListId) params.set('mailingListId', selectedListId);
     return `/api/reports/hygiene?${params.toString()}`;
   }
@@ -78,14 +87,34 @@ export function ReportsView({
               />
               Mask emails in CSV exports
             </label>
+            {connections.length > 0 && (
+              <select
+                aria-label="Filter reports by customer connection"
+                data-testid="reports-customer-selector"
+                value={selectedConnectionId}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setSelectedConnectionId(next);
+                  void reloadSummary('', next);
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              >
+                <option value="">All Customer Accounts</option>
+                {connections.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.customerName}
+                  </option>
+                ))}
+              </select>
+            )}
             <select
               aria-label="Filter reports by mailing list"
               value={selectedListId}
-              onChange={(e) => reloadSummary(e.target.value)}
+              onChange={(e) => reloadSummary(e.target.value, selectedConnectionId)}
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
             >
-              <option value="">All Mailing Lists</option>
-              {lists.map((l) => (
+              <option value="">All Mailing Lists ({visibleLists.length})</option>
+              {visibleLists.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
                 </option>

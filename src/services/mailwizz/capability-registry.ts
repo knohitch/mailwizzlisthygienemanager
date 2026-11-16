@@ -230,14 +230,37 @@ export class MailWizzCapabilityRegistry {
     return buildDefaultCapabilities();
   }
 
-  async syncEntriesToDatabase(entries: CapabilityCheckEntry[]): Promise<void> {
+  private async resolveTargetConnectionId(
+    customerConnectionId?: string | null
+  ): Promise<string | null> {
+    if (customerConnectionId?.trim()) return customerConnectionId.trim();
+    const candidates = await prisma.mailWizzCustomerConnection.findMany({
+      where: { isQuarantine: false },
+      select: { id: true },
+      take: 2,
+    });
+    return candidates.length === 1 ? candidates[0].id : null;
+  }
+
+  async syncEntriesToDatabase(
+    entries: CapabilityCheckEntry[],
+    customerConnectionId?: string
+  ): Promise<void> {
+    const connId = await this.resolveTargetConnectionId(customerConnectionId);
+    if (!connId) return;
+
     const defMap = new Map(MAILWIZZ_CAPABILITY_DEFINITIONS.map((d) => [d.key, d]));
     for (const entry of entries) {
       const def = defMap.get(entry.key);
       const dbStatus = mapToPrismaCapabilityStatus(entry.status);
       const formattedNote = `[${entry.status}] ${entry.reason}`;
       await prisma.apiCapabilityCheck.upsert({
-        where: { capabilityKey: entry.key },
+        where: {
+          customerConnectionId_capabilityKey: {
+            customerConnectionId: connId,
+            capabilityKey: entry.key,
+          },
+        },
         update: {
           category: entry.category,
           endpointOrFeature: entry.endpointOrFeature,
@@ -246,6 +269,7 @@ export class MailWizzCapabilityRegistry {
           checkedAt: entry.lastCheckedAt ? new Date(entry.lastCheckedAt) : new Date(),
         },
         create: {
+          customerConnectionId: connId,
           capabilityKey: entry.key,
           category: entry.category,
           endpointOrFeature: entry.endpointOrFeature,
@@ -256,13 +280,19 @@ export class MailWizzCapabilityRegistry {
 
       if (def?.legacyKey) {
         await prisma.apiCapabilityCheck.upsert({
-          where: { capabilityKey: def.legacyKey },
+          where: {
+            customerConnectionId_capabilityKey: {
+              customerConnectionId: connId,
+              capabilityKey: def.legacyKey,
+            },
+          },
           update: {
             status: dbStatus,
             notes: formattedNote.slice(0, 1000),
             checkedAt: entry.lastCheckedAt ? new Date(entry.lastCheckedAt) : new Date(),
           },
           create: {
+            customerConnectionId: connId,
             capabilityKey: def.legacyKey,
             category: def.category,
             endpointOrFeature: def.endpointOrFeature,
@@ -274,11 +304,15 @@ export class MailWizzCapabilityRegistry {
     }
   }
 
-  async getLatestCompatibilityResetAt(): Promise<Date | null> {
+  async getLatestCompatibilityResetAt(
+    customerConnectionId?: string
+  ): Promise<Date | null> {
+    const connId = await this.resolveTargetConnectionId(customerConnectionId);
     const latestReset = await prisma.auditLog.findFirst({
       where: {
         action: 'MAILWIZZ_COMPATIBILITY_RESET',
         resourceType: 'MailWizzCompatibility',
+        ...(connId ? { customerConnectionId: connId } : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -286,32 +320,40 @@ export class MailWizzCapabilityRegistry {
   }
 
   async invalidateCachedCompatibility(params: {
+    customerConnectionId?: string;
     actorEmail: string;
     ipAddress?: string | null;
     reason: string;
   }): Promise<void> {
+    const connId = await this.resolveTargetConnectionId(params.customerConnectionId);
     await prisma.auditLog.create({
       data: {
+        customerConnectionId: connId,
         actorEmail: params.actorEmail,
         action: 'MAILWIZZ_COMPATIBILITY_RESET',
         resourceType: 'MailWizzCompatibility',
-        resourceId: 'default',
+        resourceId: connId ?? 'default',
         outcome: 'SUCCESS',
         ipAddress: params.ipAddress ?? null,
         detailsJson: {
           reason: params.reason,
+          customerConnectionId: connId,
           resetAt: new Date().toISOString(),
         } as Prisma.InputJsonValue,
       },
     });
   }
 
-  async loadCompatibilityConfig(): Promise<PersistedCompatibilityConfig> {
-    const resetAt = await this.getLatestCompatibilityResetAt();
+  async loadCompatibilityConfig(
+    customerConnectionId?: string
+  ): Promise<PersistedCompatibilityConfig> {
+    const connId = await this.resolveTargetConnectionId(customerConnectionId);
+    const resetAt = await this.getLatestCompatibilityResetAt(connId ?? undefined);
     const latestConfig = await prisma.auditLog.findFirst({
       where: {
         action: 'MAILWIZZ_COMPATIBILITY_CONFIG',
         resourceType: 'MailWizzCompatibility',
+        ...(connId ? { customerConnectionId: connId } : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -321,10 +363,18 @@ export class MailWizzCapabilityRegistry {
         action: 'MAILWIZZ_VERSION_APPROVED',
         resourceType: 'MailWizzCompatibility',
         outcome: 'SUCCESS',
+        ...(connId ? { customerConnectionId: connId } : {}),
         ...(resetAt ? { createdAt: { gt: resetAt } } : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    const connRecord = connId
+      ? await prisma.mailWizzCustomerConnection.findUnique({
+          where: { id: connId },
+          select: { approvedVersion: true },
+        })
+      : null;
 
     const cfgJson =
       latestConfig?.detailsJson && typeof latestConfig.detailsJson === 'object'
@@ -341,9 +391,10 @@ export class MailWizzCapabilityRegistry {
           ? cfgJson.configuredVersion.trim()
           : null,
       approvedVersion:
-        typeof appJson.approvedVersion === 'string' && appJson.approvedVersion.trim()
+        connRecord?.approvedVersion ||
+        (typeof appJson.approvedVersion === 'string' && appJson.approvedVersion.trim()
           ? appJson.approvedVersion.trim()
-          : '3.0.5',
+          : '3.0.5'),
       approvedAt:
         typeof appJson.approvedAt === 'string' ? appJson.approvedAt : null,
       approvedByEmail:
@@ -353,13 +404,16 @@ export class MailWizzCapabilityRegistry {
   }
 
   async saveConfiguredVersion(params: {
+    customerConnectionId?: string;
     configuredVersion: string | null;
     notes?: string | null;
     actorEmail: string;
     ipAddress?: string | null;
   }): Promise<void> {
+    const connId = await this.resolveTargetConnectionId(params.customerConnectionId);
     await prisma.auditLog.create({
       data: {
+        customerConnectionId: connId,
         actorEmail: params.actorEmail,
         action: 'MAILWIZZ_COMPATIBILITY_CONFIG',
         resourceType: 'MailWizzCompatibility',
@@ -367,6 +421,7 @@ export class MailWizzCapabilityRegistry {
         outcome: 'SUCCESS',
         ipAddress: params.ipAddress ?? null,
         detailsJson: {
+          customerConnectionId: connId,
           configuredVersion: params.configuredVersion,
           notes: params.notes ?? null,
           verified: false,
@@ -377,14 +432,35 @@ export class MailWizzCapabilityRegistry {
   }
 
   async saveCompatibilityReport(params: {
+    customerConnectionId?: string;
     report: CompatibilityReport;
     actorEmail: string;
     ipAddress?: string | null;
   }): Promise<void> {
-    await this.syncEntriesToDatabase(params.report.capabilities);
+    const connId = await this.resolveTargetConnectionId(params.customerConnectionId);
+    await this.syncEntriesToDatabase(params.report.capabilities, connId ?? undefined);
+
+    if (connId) {
+      await prisma.connectionCapabilityReport.create({
+        data: {
+          customerConnectionId: connId,
+          detectedVersion: params.report.versionInfo.detectedVersion,
+          adapterMode: params.report.adapterMode,
+          overallStatus: params.report.overallStatus,
+          readOnlySafe: true,
+          autoCleanupAllowed: params.report.adapterMode === 'VERIFIED_NATIVE',
+          mutationSafetyAllowed: params.report.mutationSafetyAllowed,
+          mutationLockReason: params.report.mutationLockReason,
+          approvedVersion: params.report.versionInfo.approvedVersion,
+          warningsJson: params.report.warnings as Prisma.InputJsonValue,
+          reportJson: params.report as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }
 
     await prisma.auditLog.create({
       data: {
+        customerConnectionId: connId,
         actorEmail: params.actorEmail,
         action: 'MAILWIZZ_COMPATIBILITY_CHECK',
         resourceType: 'MailWizzCompatibility',
@@ -396,12 +472,30 @@ export class MailWizzCapabilityRegistry {
     });
   }
 
-  async loadLatestCompatibilityReport(): Promise<CompatibilityReport | null> {
-    const resetAt = await this.getLatestCompatibilityResetAt();
+  async loadLatestCompatibilityReport(
+    customerConnectionId?: string
+  ): Promise<CompatibilityReport | null> {
+    const connId = await this.resolveTargetConnectionId(customerConnectionId);
+    const resetAt = await this.getLatestCompatibilityResetAt(connId ?? undefined);
+
+    if (connId) {
+      const latestConnReport = await prisma.connectionCapabilityReport.findFirst({
+        where: {
+          customerConnectionId: connId,
+          ...(resetAt ? { checkedAt: { gt: resetAt } } : {}),
+        },
+        orderBy: { checkedAt: 'desc' },
+      });
+      if (latestConnReport?.reportJson && typeof latestConnReport.reportJson === 'object') {
+        return latestConnReport.reportJson as unknown as CompatibilityReport;
+      }
+    }
+
     const latest = await prisma.auditLog.findFirst({
       where: {
         action: 'MAILWIZZ_COMPATIBILITY_CHECK',
         resourceType: 'MailWizzCompatibility',
+        ...(connId ? { customerConnectionId: connId } : {}),
         ...(resetAt ? { createdAt: { gt: resetAt } } : {}),
       },
       orderBy: { createdAt: 'desc' },
@@ -415,6 +509,7 @@ export class MailWizzCapabilityRegistry {
   }
 
   async recordDisposableWriteVerification(params: {
+    customerConnectionId?: string;
     capabilityKey: WritableCapabilityKey;
     approvedVersion: string;
     disposableListUid: string;
@@ -433,8 +528,14 @@ export class MailWizzCapabilityRegistry {
         'A valid non-demo disposable test list UID is required for write capability verification.'
       );
     }
+    const connId = await this.resolveTargetConnectionId(params.customerConnectionId);
+    if (!connId) {
+      throw new Error(
+        'Explicit customerConnectionId is required for write capability verification.'
+      );
+    }
     const demoListMatch = await prisma.mailingList.findFirst({
-      where: { listUid: cleanUid, isDemoData: true },
+      where: { customerConnectionId: connId, listUid: cleanUid, isDemoData: true },
       select: { id: true },
     });
     if (demoListMatch) {
@@ -445,6 +546,7 @@ export class MailWizzCapabilityRegistry {
 
     await prisma.auditLog.create({
       data: {
+        customerConnectionId: connId,
         actorEmail: params.actorEmail,
         action: 'MAILWIZZ_WRITE_CAPABILITY_VERIFIED',
         resourceType: 'MailWizzCompatibility',
@@ -452,6 +554,7 @@ export class MailWizzCapabilityRegistry {
         outcome: 'SUCCESS',
         ipAddress: params.ipAddress ?? null,
         detailsJson: {
+          customerConnectionId: connId,
           capabilityKey: params.capabilityKey,
           verifiedVersion: params.approvedVersion,
           disposableListUid: cleanUid,
@@ -463,7 +566,12 @@ export class MailWizzCapabilityRegistry {
     });
 
     await prisma.apiCapabilityCheck.upsert({
-      where: { capabilityKey: params.capabilityKey },
+      where: {
+        customerConnectionId_capabilityKey: {
+          customerConnectionId: connId,
+          capabilityKey: params.capabilityKey,
+        },
+      },
       update: {
         status: 'VERIFIED',
         checkedAt: new Date(),
@@ -473,6 +581,7 @@ export class MailWizzCapabilityRegistry {
         ),
       },
       create: {
+        customerConnectionId: connId,
         capabilityKey: params.capabilityKey,
         category: 'MUTATIONS',
         endpointOrFeature: params.capabilityKey,
@@ -486,17 +595,22 @@ export class MailWizzCapabilityRegistry {
   }
 
   async loadVerifiedWriteCapabilities(
-    version: string | null | undefined
+    version: string | null | undefined,
+    customerConnectionId?: string
   ): Promise<Set<WritableCapabilityKey>> {
     const out = new Set<WritableCapabilityKey>();
     if (!version || !isMailWizzMutationsEnabled()) return out;
 
-    const resetAt = await this.getLatestCompatibilityResetAt();
+    const connId = await this.resolveTargetConnectionId(customerConnectionId);
+    if (!connId) return out;
+
+    const resetAt = await this.getLatestCompatibilityResetAt(connId);
     const rows = await prisma.auditLog.findMany({
       where: {
         action: 'MAILWIZZ_WRITE_CAPABILITY_VERIFIED',
         resourceType: 'MailWizzCompatibility',
         outcome: 'SUCCESS',
+        customerConnectionId: connId,
         ...(resetAt ? { createdAt: { gt: resetAt } } : {}),
       },
       orderBy: { createdAt: 'desc' },
@@ -521,13 +635,22 @@ export class MailWizzCapabilityRegistry {
   }
 
   async approveVersion(params: {
+    customerConnectionId?: string;
     version: string;
     actorEmail: string;
     ipAddress?: string | null;
     report: CompatibilityReport;
   }): Promise<void> {
+    const connId = await this.resolveTargetConnectionId(params.customerConnectionId);
+    if (connId) {
+      await prisma.mailWizzCustomerConnection.update({
+        where: { id: connId },
+        data: { approvedVersion: params.version },
+      });
+    }
     await prisma.auditLog.create({
       data: {
+        customerConnectionId: connId,
         actorEmail: params.actorEmail,
         action: 'MAILWIZZ_VERSION_APPROVED',
         resourceType: 'MailWizzCompatibility',
@@ -535,6 +658,7 @@ export class MailWizzCapabilityRegistry {
         outcome: 'SUCCESS',
         ipAddress: params.ipAddress ?? null,
         detailsJson: {
+          customerConnectionId: connId,
           approvedVersion: params.version,
           approvedAt: new Date().toISOString(),
           approvedByEmail: params.actorEmail,

@@ -133,12 +133,31 @@ export const MAILWIZZ_CAPABILITY_BASELINE: CapabilityDefinition[] = [
   },
 ];
 
-export async function ensureCapabilityMatrixInitialized(): Promise<void> {
+export async function ensureCapabilityMatrixInitialized(
+  customerConnectionId?: string
+): Promise<void> {
+  let connId = customerConnectionId?.trim();
+  if (!connId) {
+    const first = await prisma.mailWizzCustomerConnection.findMany({
+      where: { isQuarantine: false },
+      select: { id: true },
+      take: 2,
+    });
+    if (first.length !== 1) return;
+    connId = first[0].id;
+  }
+
   for (const item of MAILWIZZ_CAPABILITY_BASELINE) {
     await prisma.apiCapabilityCheck.upsert({
-      where: { capabilityKey: item.capabilityKey },
+      where: {
+        customerConnectionId_capabilityKey: {
+          customerConnectionId: connId,
+          capabilityKey: item.capabilityKey,
+        },
+      },
       update: {},
       create: {
+        customerConnectionId: connId,
         capabilityKey: item.capabilityKey,
         category: item.category,
         endpointOrFeature: item.endpointOrFeature,
@@ -152,19 +171,37 @@ export async function ensureCapabilityMatrixInitialized(): Promise<void> {
 export async function updateCapabilityStatus(
   capabilityKey: string,
   status: CapabilityStatus,
-  notes?: string
+  notes?: string,
+  customerConnectionId?: string
 ): Promise<void> {
+  let connId = customerConnectionId?.trim();
+  if (!connId) {
+    const first = await prisma.mailWizzCustomerConnection.findMany({
+      where: { isQuarantine: false },
+      select: { id: true },
+      take: 2,
+    });
+    if (first.length !== 1) return;
+    connId = first[0].id;
+  }
+
   const baseline = MAILWIZZ_CAPABILITY_BASELINE.find(
     (b) => b.capabilityKey === capabilityKey
   );
   await prisma.apiCapabilityCheck.upsert({
-    where: { capabilityKey },
+    where: {
+      customerConnectionId_capabilityKey: {
+        customerConnectionId: connId,
+        capabilityKey,
+      },
+    },
     update: {
       status,
       ...(notes ? { notes } : {}),
       checkedAt: new Date(),
     },
     create: {
+      customerConnectionId: connId,
       capabilityKey,
       category: baseline?.category ?? 'Other',
       endpointOrFeature: baseline?.endpointOrFeature ?? capabilityKey,

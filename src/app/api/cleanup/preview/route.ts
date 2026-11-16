@@ -6,6 +6,7 @@ import { FilterGroupSchema } from '@/services/analysis/filter-engine';
 import { previewCleanupOperation } from '@/services/cleanup/planner';
 
 const PreviewRequestSchema = z.object({
+  customerConnectionId: z.string().trim().optional(),
   actionType: z.enum([
     'SUPPRESS',
     'UNSUBSCRIBE',
@@ -39,10 +40,15 @@ export async function GET(req: NextRequest) {
   const auth = await requireApiAuth(req, { rateLimitBucket: 'cleanup-list' });
   if (!auth.ok) return auth.response;
 
+  const customerConnectionId =
+    req.nextUrl.searchParams.get('customerConnectionId')?.trim() || undefined;
+
   const operations = await prisma.cleanupOperation.findMany({
+    where: customerConnectionId ? { customerConnectionId } : undefined,
     orderBy: { createdAt: 'desc' },
     take: 30,
     include: {
+      customerConnection: { select: { id: true, customerName: true, customerSlug: true } },
       mailingList: { select: { id: true, name: true, listUid: true } },
     },
   });
@@ -50,6 +56,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     operations: operations.map((op) => ({
       id: op.id,
+      customerConnectionId: op.customerConnectionId,
+      customerConnection: op.customerConnection,
       actionType: op.actionType,
       status: op.status,
       dryRunOnly: op.dryRunOnly,

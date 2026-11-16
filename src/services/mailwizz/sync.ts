@@ -5,7 +5,6 @@ import { logger } from '@/services/security/logger';
 import { recomputeAllHygieneClassifications } from '@/services/analysis/classifier';
 import { reconcileListsAndCampaigns } from '@/services/analysis/reconciliation';
 import { MailWizzClient } from './client';
-import type { MailWizzAuthMode } from './compat';
 import { mapStrictMailWizzSubscriberStatus } from './adapter-v3';
 import { mailWizzCapabilityRegistry } from './capability-registry';
 import {
@@ -13,6 +12,11 @@ import {
   updateCapabilityStatus,
 } from './capability-matrix';
 import { fetchEngagementEventsFromReportingDb } from './reporting-db';
+import {
+  getMailWizzClientWithContext,
+  resolveUnambiguousConnectionId,
+} from './client-factory';
+import { redactErrorMessage } from './connections';
 import type { EngagementEventType, Prisma } from '@prisma/client';
 
 function parseMailWizzDate(raw: string | null | undefined): Date | null {
@@ -21,47 +25,51 @@ function parseMailWizzDate(raw: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export async function createConfiguredMailWizzClient(): Promise<{
+export async function createConfiguredMailWizzClient(
+  customerConnectionId?: string,
+  expectedCredentialVersion?: number
+): Promise<{
   client: MailWizzClient;
+  customerConnectionId: string;
+  credentialVersion: number;
   batchSize: number;
   lookbackDays: number;
   reportingDbUri: string | null;
   reportingDbPrefix: string;
 }> {
   const env = getEnv();
-  const cfg = await prisma.appConfig.upsert({
-    where: { id: 'default' },
-    update: {},
-    create: { id: 'default' },
-  });
+  const [cfg, connId] = await Promise.all([
+    prisma.appConfig.upsert({
+      where: { id: 'default' },
+      update: {},
+      create: { id: 'default' },
+    }),
+    resolveUnambiguousConnectionId(customerConnectionId),
+  ]);
 
-  const apiUrl = cfg.mailwizzApiUrl || env.MAILWIZZ_API_URL;
-  const apiKey = cfg.mailwizzApiKeyEnc
-    ? decryptSecret(cfg.mailwizzApiKeyEnc)
-    : env.MAILWIZZ_API_KEY;
+  const [ctx, conn] = await Promise.all([
+    getMailWizzClientWithContext(connId, { expectedCredentialVersion }),
+    prisma.mailWizzCustomerConnection.findUniqueOrThrow({
+      where: { id: connId },
+      select: { reportingDbUrlEnc: true, reportingDbPrefix: true },
+    }),
+  ]);
 
-  if (!apiUrl || !apiKey) {
-    throw new Error(
-      'MailWizz API URL and API key are not configured yet. Configure them in Settings before syncing.'
-    );
-  }
-
-  const reportingDbUri = cfg.reportingDbUrlEnc
-    ? decryptSecret(cfg.reportingDbUrlEnc)
-    : env.MAILWIZZ_REPORTING_DB_URL || null;
+  const reportingDbUri = conn.reportingDbUrlEnc
+    ? decryptSecret(conn.reportingDbUrlEnc)
+    : cfg.reportingDbUrlEnc
+      ? decryptSecret(cfg.reportingDbUrlEnc)
+      : env.MAILWIZZ_REPORTING_DB_URL || null;
 
   return {
-    client: new MailWizzClient({
-      apiUrl,
-      apiKey,
-      authMode: (cfg.mailwizzAuthMode as MailWizzAuthMode) || 'auto',
-      maxRequestsPerSecond: cfg.maxApiRequestsPerSecond,
-      allowInsecureHttp: env.ALLOW_INSECURE_MAILWIZZ_HTTP,
-    }),
+    client: ctx.client,
+    customerConnectionId: ctx.connectionId,
+    credentialVersion: ctx.credentialVersion,
     batchSize: cfg.batchSize,
     lookbackDays: cfg.lookbackDays,
     reportingDbUri,
-    reportingDbPrefix: cfg.reportingDbPrefix || env.MAILWIZZ_REPORTING_DB_PREFIX,
+    reportingDbPrefix:
+      conn.reportingDbPrefix || cfg.reportingDbPrefix || env.MAILWIZZ_REPORTING_DB_PREFIX,
   };
 }
 
@@ -70,6 +78,7 @@ export interface SyncProgressCallback {
 }
 
 export interface SyncResultSummary {
+  customerConnectionId: string;
   listsSynced: number;
   subscribersSynced: number;
   segmentsSynced: number;
@@ -80,52 +89,102 @@ export interface SyncResultSummary {
 }
 
 export async function runMailWizzSync(options?: {
+  customerConnectionId?: string;
+  expectedCredentialVersion?: number;
   onlyListUid?: string;
   onProgress?: SyncProgressCallback;
   client?: MailWizzClient;
 }): Promise<SyncResultSummary> {
-  await ensureCapabilityMatrixInitialized();
+  const env = getEnv();
+  const cfg = await prisma.appConfig.upsert({
+    where: { id: 'default' },
+    update: {},
+    create: { id: 'default' },
+  });
+
+  const connId = await resolveUnambiguousConnectionId(options?.customerConnectionId);
+  const connRecord = await prisma.mailWizzCustomerConnection.findUnique({
+    where: { id: connId },
+    include: { syncState: true },
+  });
+  if (!connRecord || connRecord.isQuarantine || !connRecord.isEnabled || connRecord.status === 'DISABLED') {
+    throw new Error(
+      `Sync blocked: customer connection "${connRecord?.customerName ?? connId}" is disabled or quarantined.`
+    );
+  }
+  if (connRecord.syncState?.isPaused) {
+    throw new Error(
+      `Sync paused for customer "${connRecord.customerName}": ${connRecord.syncState.pauseReason || 'paused by administrator'}`
+    );
+  }
+
+  await ensureCapabilityMatrixInitialized(connId);
 
   const { client, batchSize, lookbackDays, reportingDbUri, reportingDbPrefix } = options?.client
     ? {
         client: options.client,
-        batchSize: 50,
-        lookbackDays: 90,
-        reportingDbUri: null,
-        reportingDbPrefix: 'mw_',
+        batchSize: cfg.batchSize,
+        lookbackDays: cfg.lookbackDays,
+        reportingDbUri: connRecord.reportingDbUrlEnc
+          ? decryptSecret(connRecord.reportingDbUrlEnc)
+          : null,
+        reportingDbPrefix:
+          connRecord.reportingDbPrefix || env.MAILWIZZ_REPORTING_DB_PREFIX,
       }
-    : await createConfiguredMailWizzClient();
+    : await createConfiguredMailWizzClient(connId, options?.expectedCredentialVersion);
 
-  const reportProgress = async (current: number, total: number, message: string) => {
-    if (options?.onProgress) {
-      await options.onProgress({ current, total, message });
+  await prisma.connectionSyncState.upsert({
+    where: { customerConnectionId: connId },
+    create: {
+      customerConnectionId: connId,
+      lastFullSyncStartedAt: new Date(),
+      lastSyncStatus: 'RUNNING',
+      lastSyncErrorSafe: null,
+      activeWorkerCount: 1,
+    },
+    update: {
+      lastFullSyncStartedAt: new Date(),
+      lastSyncStatus: 'RUNNING',
+      lastSyncErrorSafe: null,
+      activeWorkerCount: { increment: 1 },
+    },
+  });
+
+  try {
+    const reportProgress = async (current: number, total: number, message: string) => {
+      if (options?.onProgress) {
+        await options.onProgress({ current, total, message });
+      }
+    };
+
+    await reportProgress(5, 100, 'Discovering mailing lists from MailWizz API...');
+
+    // 1. Discover lists
+    const listsRes = await client.getLists(batchSize);
+    await updateCapabilityStatus('auth_x_api_key', 'VERIFIED', undefined, connId);
+    await updateCapabilityStatus('lists_discovery', 'VERIFIED', undefined, connId);
+    await updateCapabilityStatus('list_discovery', 'VERIFIED', undefined, connId);
+
+    if (client.getDetectedServerVersion()) {
+      await prisma.mailWizzCustomerConnection.update({
+        where: { id: connId },
+        data: { detectedVersion: client.getDetectedServerVersion() },
+      });
     }
-  };
 
-  await reportProgress(5, 100, 'Discovering mailing lists from MailWizz API...');
+    const targetLists = options?.onlyListUid
+      ? listsRes.records.filter((l) => l.general.list_uid === options.onlyListUid)
+      : listsRes.records;
 
-  // 1. Discover lists
-  const listsRes = await client.getLists(batchSize);
-  await updateCapabilityStatus('auth_x_api_key', 'VERIFIED');
-  await updateCapabilityStatus('lists_discovery', 'VERIFIED');
-  await updateCapabilityStatus('list_discovery', 'VERIFIED');
-
-  if (client.getDetectedServerVersion()) {
+    // Switching from synthetic demo mode to real synced data clears demo flag on this connection & global when appropriate
+    await prisma.mailWizzCustomerConnection.update({
+      where: { id: connId },
+      data: { isDemoData: false, status: 'CONNECTED' },
+    });
     await prisma.appConfig.update({
       where: { id: 'default' },
-      data: { mailwizzDetectedVersion: client.getDetectedServerVersion() },
+      data: { isDemoMode: false },
     });
-  }
-
-  const targetLists = options?.onlyListUid
-    ? listsRes.records.filter((l) => l.general.list_uid === options.onlyListUid)
-    : listsRes.records;
-
-  // Switching from synthetic demo mode to real synced data clears demo flag
-  await prisma.appConfig.update({
-    where: { id: 'default' },
-    data: { isDemoMode: false },
-  });
 
   let listsSynced = 0;
   let subscribersSynced = 0;
@@ -149,12 +208,17 @@ export async function runMailWizzSync(options?: {
     );
 
     const subsRes = await client.getSubscribers(listUid, { perPage: batchSize });
-    await updateCapabilityStatus('subscribers_paginated', 'VERIFIED');
-    await updateCapabilityStatus('subscriber_retrieval', 'VERIFIED');
-    await updateCapabilityStatus('subscriber_pagination', 'VERIFIED');
+    await updateCapabilityStatus('subscribers_paginated', 'VERIFIED', undefined, connId);
+    await updateCapabilityStatus('subscriber_retrieval', 'VERIFIED', undefined, connId);
+    await updateCapabilityStatus('subscriber_pagination', 'VERIFIED', undefined, connId);
 
     const dbList = await prisma.mailingList.upsert({
-      where: { listUid },
+      where: {
+        customerConnectionId_listUid: {
+          customerConnectionId: connId,
+          listUid,
+        },
+      },
       update: {
         name: mwList.general.name,
         displayName: mwList.general.display_name || null,
@@ -169,6 +233,7 @@ export async function runMailWizzSync(options?: {
         lastSyncedAt: new Date(),
       },
       create: {
+        customerConnectionId: connId,
         listUid,
         name: mwList.general.name,
         displayName: mwList.general.display_name || null,
@@ -214,20 +279,21 @@ export async function runMailWizzSync(options?: {
           isDemoData: false,
           lastSyncedAt: new Date(),
         },
-        create: {
-          mailingListId: dbList.id,
-          subscriberUid: sub.subscriber_uid,
-          email,
-          emailHash: hashEmail(email),
-          firstName: sub.FNAME ?? null,
-          lastName: sub.LNAME ?? null,
-          status: mappedStatus,
-          rawStatus: sub.status,
-          source: sub.source ?? null,
-          dateAddedMailwizz: parseMailWizzDate(sub.date_added),
-          isDemoData: false,
-          lastSyncedAt: new Date(),
-        },
+          create: {
+            customerConnectionId: connId,
+            mailingListId: dbList.id,
+            subscriberUid: sub.subscriber_uid,
+            email,
+            emailHash: hashEmail(email),
+            firstName: sub.FNAME ?? null,
+            lastName: sub.LNAME ?? null,
+            status: mappedStatus,
+            rawStatus: sub.status,
+            source: sub.source ?? null,
+            dateAddedMailwizz: parseMailWizzDate(sub.date_added),
+            isDemoData: false,
+            lastSyncedAt: new Date(),
+          },
       });
       subscriberIdByUid.set(sub.subscriber_uid, {
         id: savedSub.id,
@@ -239,7 +305,7 @@ export async function runMailWizzSync(options?: {
     // Native segments discovery
     try {
       const segsRes = await client.getSegments(listUid, batchSize);
-      await updateCapabilityStatus('segments_discovery', 'VERIFIED');
+      await updateCapabilityStatus('segments_discovery', 'VERIFIED', undefined, connId);
 
       for (const seg of segsRes.records) {
         let operatorMatch: string | null = null;
@@ -278,6 +344,7 @@ export async function runMailWizzSync(options?: {
             lastSyncedAt: new Date(),
           },
           create: {
+            customerConnectionId: connId,
             mailingListId: dbList.id,
             segmentUid: seg.segment_uid,
             name: seg.name,
@@ -327,7 +394,7 @@ export async function runMailWizzSync(options?: {
   // 3. Sync historical campaigns, aggregate stats, bounce logs, and probe read-only activity logs
   await reportProgress(60, 100, 'Discovering campaigns and aggregate statistics...');
   const campaignsRes = await client.getCampaigns(batchSize);
-  await updateCapabilityStatus('campaigns_discovery', 'VERIFIED');
+  await updateCapabilityStatus('campaigns_discovery', 'VERIFIED', undefined, connId);
 
   const activityEndpointSupport: Record<
     'delivery-logs' | 'opens' | 'clicks' | 'complaints',
@@ -354,7 +421,7 @@ export async function runMailWizzSync(options?: {
     try {
       const statsRes = await client.getCampaignStats(campSummary.campaign_uid);
       stats = statsRes.data ?? null;
-      await updateCapabilityStatus('campaign_aggregate_stats', 'VERIFIED');
+      await updateCapabilityStatus('campaign_aggregate_stats', 'VERIFIED', undefined, connId);
     } catch (err) {
       logger.warn('Failed fetching campaign stats', {
         campaignUid: campSummary.campaign_uid,
@@ -366,7 +433,12 @@ export async function runMailWizzSync(options?: {
       rec?.segment && !Array.isArray(rec.segment) ? rec.segment : null;
 
     const savedCamp = await prisma.campaign.upsert({
-      where: { campaignUid: campSummary.campaign_uid },
+      where: {
+        customerConnectionId_campaignUid: {
+          customerConnectionId: connId,
+          campaignUid: campSummary.campaign_uid,
+        },
+      },
       update: {
         campaignIdMailwizz: campSummary.campaign_id
           ? String(campSummary.campaign_id)
@@ -414,6 +486,7 @@ export async function runMailWizzSync(options?: {
         lastSyncedAt: new Date(),
       },
       create: {
+        customerConnectionId: connId,
         campaignUid: campSummary.campaign_uid,
         campaignIdMailwizz: campSummary.campaign_id
           ? String(campSummary.campaign_id)
@@ -469,7 +542,7 @@ export async function runMailWizzSync(options?: {
         campSummary.campaign_uid,
         batchSize
       );
-      await updateCapabilityStatus('campaign_bounce_logs', 'VERIFIED');
+      await updateCapabilityStatus('campaign_bounce_logs', 'VERIFIED', undefined, connId);
 
       const bounceTime = savedCamp.sendAt ?? new Date();
       for (const b of bouncesRes.records) {
@@ -490,13 +563,14 @@ export async function runMailWizzSync(options?: {
               : 'INTERNAL_BOUNCE';
 
         const dedupeKey = sha256Hex(
-          `API_BOUNCE_LOG|${savedCamp.campaignUid}|${b.subscriber.subscriber_uid}|${eventType}`
+          `API_BOUNCE_LOG|${connId}|${savedCamp.campaignUid}|${b.subscriber.subscriber_uid}|${eventType}`
         );
 
         await prisma.engagementEvent.upsert({
           where: { dedupeKey },
           update: {},
           create: {
+            customerConnectionId: connId,
             subscriberId: subRef.id,
             campaignId: savedCamp.id,
             mailingListId: subRef.mailingListId,
@@ -547,7 +621,8 @@ export async function runMailWizzSync(options?: {
           await updateCapabilityStatus(
             def.capKey,
             'VERIFIED',
-            `Natively supported by connected MailWizz API via /campaigns/{uid}/${def.subpath}.`
+            `Natively supported by connected MailWizz API via /campaigns/{uid}/${def.subpath}.`,
+            connId
           );
         }
       } else if (probe.status === 'UNSUPPORTED') {
@@ -556,7 +631,8 @@ export async function runMailWizzSync(options?: {
         await updateCapabilityStatus(
           def.capKey,
           'UNAVAILABLE',
-          probe.reason || `Endpoint /campaigns/{uid}/${def.subpath} returned unsupported status.`
+          probe.reason || `Endpoint /campaigns/{uid}/${def.subpath} returned unsupported status.`,
+          connId
         );
         continue;
       } else {
@@ -565,7 +641,8 @@ export async function runMailWizzSync(options?: {
           await updateCapabilityStatus(
             def.capKey,
             'UNAVAILABLE',
-            `Permission denied (${probe.reason ?? 'HTTP 401/403'}) probing /campaigns/{uid}/${def.subpath}.`
+            `Permission denied (${probe.reason ?? 'HTTP 401/403'}) probing /campaigns/{uid}/${def.subpath}.`,
+            connId
           );
         }
         continue;
@@ -586,12 +663,13 @@ export async function runMailWizzSync(options?: {
         const occurredAt =
           parseMailWizzDate(act.date_added ?? act.created_at) ?? savedCamp.sendAt ?? new Date();
         const dedupeKey = sha256Hex(
-          `API_ACTIVITY_LOG|${savedCamp.campaignUid}|${subUid}|${def.eventType}|${occurredAt.toISOString()}`
+          `API_ACTIVITY_LOG|${connId}|${savedCamp.campaignUid}|${subUid}|${def.eventType}|${occurredAt.toISOString()}`
         );
         await prisma.engagementEvent.upsert({
           where: { dedupeKey },
           update: {},
           create: {
+            customerConnectionId: connId,
             subscriberId: subRef.id,
             campaignId: savedCamp.id,
             mailingListId: subRef.mailingListId,
@@ -625,17 +703,20 @@ export async function runMailWizzSync(options?: {
         await updateCapabilityStatus(
           'readonly_reporting_db',
           'VERIFIED',
-          `Verified SELECT-only access with prefix "${reportingDbPrefix}".`
+          `Verified SELECT-only access with prefix "${reportingDbPrefix}".`,
+          connId
         );
       } else {
         await updateCapabilityStatus(
           'readonly_reporting_db',
           'UNAVAILABLE',
-          dbResult.verification.notes.join(' ') || 'Schema verification failed.'
+          dbResult.verification.notes.join(' ') || 'Schema verification failed.',
+          connId
         );
       }
 
       const allCampaigns = await prisma.campaign.findMany({
+        where: { customerConnectionId: connId },
         select: { id: true, campaignUid: true },
       });
       const campIdMap = new Map(allCampaigns.map((c) => [c.campaignUid, c.id]));
@@ -645,12 +726,13 @@ export async function runMailWizzSync(options?: {
         if (!subRef) continue;
         const campaignId = campIdMap.get(ev.campaignUid) ?? null;
         const dedupeKey = sha256Hex(
-          `READONLY_REPORTING_DB|${ev.campaignUid}|${ev.subscriberUid}|${ev.eventType}|${ev.occurredAt.toISOString()}`
+          `READONLY_REPORTING_DB|${connId}|${ev.campaignUid}|${ev.subscriberUid}|${ev.eventType}|${ev.occurredAt.toISOString()}`
         );
         await prisma.engagementEvent.upsert({
           where: { dedupeKey },
           update: {},
           create: {
+            customerConnectionId: connId,
             subscriberId: subRef.id,
             campaignId,
             mailingListId: subRef.mailingListId,
@@ -668,7 +750,8 @@ export async function runMailWizzSync(options?: {
       await updateCapabilityStatus(
         'readonly_reporting_db',
         'UNAVAILABLE',
-        err instanceof Error ? err.message : 'Reporting DB connection error'
+        err instanceof Error ? err.message : 'Reporting DB connection error',
+        connId
       );
       logger.warn('Reporting DB sync failed', {
         error: err instanceof Error ? err.message : 'unknown',
@@ -682,24 +765,53 @@ export async function runMailWizzSync(options?: {
     await updateCapabilityStatus(
       'subscriber_status_retrieval',
       'UNAVAILABLE',
-      `Detected unrecognized MailWizz subscriber statuses (${unknownList}); safely mapped to UNKNOWN without altering consent interpretation.`
+      `Detected unrecognized MailWizz subscriber statuses (${unknownList}); safely mapped to UNKNOWN without altering consent interpretation.`,
+      connId
     );
     logger.warn('Unrecognized MailWizz subscriber statuses detected during sync', {
       statuses: unknownList,
     });
   } else if (subscribersSynced > 0) {
-    await updateCapabilityStatus('subscriber_status_retrieval', 'VERIFIED');
+    await updateCapabilityStatus('subscriber_status_retrieval', 'VERIFIED', undefined, connId);
   }
 
-  // Recompute hygiene classification & reconciliation (existing historical events preserved intact)
+  // Recompute hygiene classification & reconciliation strictly for this customer connection
   await reportProgress(90, 100, 'Analyzing engagement classifications and reconciling totals...');
-  const classification = await recomputeAllHygieneClassifications();
-  await reconcileListsAndCampaigns();
-  await mailWizzCapabilityRegistry.loadCompatibilityConfig();
+  const classification = await recomputeAllHygieneClassifications(undefined, connId);
+  await reconcileListsAndCampaigns(undefined, connId);
+  await mailWizzCapabilityRegistry.loadCompatibilityConfig(connId);
+
+  const [totalListsCount, totalSubscribersCount, totalCampaignsCount] = await Promise.all([
+    prisma.mailingList.count({ where: { customerConnectionId: connId } }),
+    prisma.subscriber.count({ where: { customerConnectionId: connId } }),
+    prisma.campaign.count({ where: { customerConnectionId: connId } }),
+  ]);
+
+  await prisma.connectionSyncState.upsert({
+    where: { customerConnectionId: connId },
+    create: {
+      customerConnectionId: connId,
+      lastFullSyncCompletedAt: new Date(),
+      lastSyncStatus: 'COMPLETED',
+      lastSyncErrorSafe: null,
+      totalListsSynced: totalListsCount,
+      totalSubscribersSynced: totalSubscribersCount,
+      totalCampaignsSynced: totalCampaignsCount,
+    },
+    update: {
+      lastFullSyncCompletedAt: new Date(),
+      lastSyncStatus: 'COMPLETED',
+      lastSyncErrorSafe: null,
+      totalListsSynced: totalListsCount,
+      totalSubscribersSynced: totalSubscribersCount,
+      totalCampaignsSynced: totalCampaignsCount,
+    },
+  });
 
   await reportProgress(100, 100, 'Synchronization complete.');
 
   return {
+    customerConnectionId: connId,
     listsSynced,
     subscribersSynced,
     segmentsSynced,
@@ -708,4 +820,24 @@ export async function runMailWizzSync(options?: {
     reportingDbEventsRecorded,
     classifiedSubscribers: classification.updatedSubscribers,
   };
+  } catch (err) {
+    await prisma.connectionSyncState.upsert({
+      where: { customerConnectionId: connId },
+      create: {
+        customerConnectionId: connId,
+        lastSyncStatus: 'ERROR',
+        lastSyncErrorSafe: redactErrorMessage(err),
+      },
+      update: {
+        lastSyncStatus: 'ERROR',
+        lastSyncErrorSafe: redactErrorMessage(err),
+      },
+    });
+    throw err;
+  } finally {
+    await prisma.connectionSyncState.updateMany({
+      where: { customerConnectionId: connId, activeWorkerCount: { gt: 0 } },
+      data: { activeWorkerCount: { decrement: 1 } },
+    });
+  }
 }

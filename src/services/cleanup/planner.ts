@@ -15,6 +15,7 @@ import {
   maskEmail,
   type SubscriberSafetyCandidate,
 } from './safety';
+import { resolveUnambiguousConnectionId } from '@/services/mailwizz/client-factory';
 import type { CleanupActionType, Prisma } from '@prisma/client';
 
 const REMOTE_ACTIONS = new Set<CleanupActionType>([
@@ -26,6 +27,7 @@ const REMOTE_ACTIONS = new Set<CleanupActionType>([
 ]);
 
 export interface PreviewCleanupInput {
+  customerConnectionId?: string;
   actionType: CleanupActionType;
   filter: FilterGroup;
   mailingListId?: string;
@@ -54,6 +56,18 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
     create: { id: 'default' },
   });
 
+  if (input.mailingListId && input.customerConnectionId) {
+    const mlCheck = await prisma.mailingList.findUnique({
+      where: { id: input.mailingListId },
+      select: { id: true, customerConnectionId: true },
+    });
+    if (mlCheck && mlCheck.customerConnectionId !== input.customerConnectionId) {
+      throw new Error(
+        'Customer connection scoping violation: selected mailing list does not belong to the requested customer connection.'
+      );
+    }
+  }
+
   if (input.mailingListId && input.explicitSubscriberIds && input.explicitSubscriberIds.length > 0) {
     const crossListCount = await prisma.subscriber.count({
       where: {
@@ -71,6 +85,7 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
   const filterWhere = buildPrismaWhereFromFilter(input.filter);
   const clauses: Prisma.SubscriberWhereInput[] = [];
   if (Object.keys(filterWhere).length > 0) clauses.push(filterWhere);
+  if (input.customerConnectionId) clauses.push({ customerConnectionId: input.customerConnectionId });
   if (input.mailingListId) clauses.push({ mailingListId: input.mailingListId });
   if (input.explicitSubscriberIds && input.explicitSubscriberIds.length > 0) {
     clauses.push({ id: { in: input.explicitSubscriberIds } });
@@ -84,6 +99,7 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
       mailingList: {
         select: {
           id: true,
+          customerConnectionId: true,
           listUid: true,
           name: true,
           optIn: true,
@@ -96,10 +112,20 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
     orderBy: [{ mailingListId: 'asc' }, { email: 'asc' }],
   });
 
-  // Deduplicate by (mailingListUid, subscriberUid)
+  // Enforce strict tenant isolation: all matched subscribers must belong to the same customerConnectionId
+  const distinctConnectionIds = new Set<string>(
+    matchedSubscribers.map((s) => s.customerConnectionId)
+  );
+  if (distinctConnectionIds.size > 1) {
+    throw new Error(
+      `Customer isolation violation: cleanup preview matched subscribers across ${distinctConnectionIds.size} different customer connections. Select a single customer connection first.`
+    );
+  }
+
+  // Deduplicate by (customerConnectionId, mailingListUid, subscriberUid)
   const seenKeys = new Set<string>();
   const uniqueSubs = matchedSubscribers.filter((s) => {
-    const key = `${s.mailingList.listUid}:${s.subscriberUid}`;
+    const key = `${s.customerConnectionId}:${s.mailingList.listUid}:${s.subscriberUid}`;
     if (seenKeys.has(key)) return false;
     seenKeys.add(key);
     return true;
@@ -138,14 +164,52 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
     );
   }
 
+  const sourceList = input.mailingListId
+    ? await prisma.mailingList.findUnique({ where: { id: input.mailingListId } })
+    : distinctLists.size === 1
+      ? await prisma.mailingList.findUnique({
+          where: { id: Array.from(distinctLists.keys())[0] },
+        })
+      : null;
+
+  const customerConnectionId =
+    input.customerConnectionId?.trim() ||
+    sourceList?.customerConnectionId ||
+    Array.from(distinctConnectionIds)[0] ||
+    (await resolveUnambiguousConnectionId());
+
+  if (sourceList && sourceList.customerConnectionId !== customerConnectionId) {
+    throw new Error(
+      'Customer connection isolation violation: source list belongs to a different customer connection.'
+    );
+  }
+
   if (
-    input.actionType === 'COPY_SUBSCRIBERS' &&
+    (input.actionType === 'COPY_SUBSCRIBERS' || input.actionType === 'MOVE_SUBSCRIBERS') &&
     input.targetListUid
   ) {
-    const targetList = await prisma.mailingList.findUnique({
-      where: { listUid: input.targetListUid },
+    const targetList = await prisma.mailingList.findFirst({
+      where: {
+        customerConnectionId,
+        listUid: input.targetListUid,
+      },
     });
-    if (targetList && targetList.optIn?.toLowerCase() === 'double') {
+    if (!targetList) {
+      const crossCustomerTarget = await prisma.mailingList.findFirst({
+        where: { listUid: input.targetListUid },
+        select: { id: true },
+      });
+      if (crossCustomerTarget) {
+        throw new Error(
+          `Customer isolation violation: target list UID "${input.targetListUid}" belongs to another customer connection.`
+        );
+      }
+    }
+    if (
+      input.actionType === 'COPY_SUBSCRIBERS' &&
+      targetList &&
+      targetList.optIn?.toLowerCase() === 'double'
+    ) {
       warnings.push(
         `Target list "${targetList.name}" is configured with double opt-in. Remote bulk subscriber creation is blocked to prevent triggering confirmation emails.`
       );
@@ -212,14 +276,6 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
         (exclusionBreakdown[decision.reason] ?? 0) + 1;
     }
   }
-
-  const sourceList = input.mailingListId
-    ? await prisma.mailingList.findUnique({ where: { id: input.mailingListId } })
-    : distinctLists.size === 1
-      ? await prisma.mailingList.findUnique({
-          where: { id: Array.from(distinctLists.keys())[0] },
-        })
-      : null;
 
   const expectedConfirmListName =
     sourceList?.name ??
@@ -301,6 +357,7 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
   const operation = await prisma.cleanupOperation.create({
     data: {
       id: operationId,
+      customerConnectionId,
       operationKey,
       actionType: input.actionType,
       mailingListId: sourceList?.id ?? input.mailingListId ?? null,
@@ -334,6 +391,7 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
   // Persist per-subscriber records in chunks
   const allRecordRows: Prisma.CleanupOperationRecordCreateManyInput[] = [
     ...eligibleCandidates.map(({ sub, decisionReason }) => ({
+      customerConnectionId,
       operationId: operation.id,
       idempotencyKey: `${operation.id}:${sub.id}`,
       subscriberId: sub.id,
@@ -349,6 +407,7 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
       reason: decisionReason,
     })),
     ...excludedRecords.map(({ sub, reason }) => ({
+      customerConnectionId,
       operationId: operation.id,
       idempotencyKey: `${operation.id}:${sub.id}`,
       subscriberId: sub.id,
@@ -374,6 +433,7 @@ export async function previewCleanupOperation(input: PreviewCleanupInput) {
   }
 
   await recordAuditLog({
+    customerConnectionId,
     actorEmail: input.actorEmail,
     action: 'CLEANUP_DRY_RUN_CREATED',
     resourceType: 'CleanupOperation',
@@ -456,7 +516,8 @@ export async function confirmAndEnqueueCleanup(input: ConfirmCleanupInput) {
 
   if (REMOTE_ACTIONS.has(op.actionType)) {
     await assertCompatibilityPermitsRemoteMutations(
-      op.actionType as RemoteMutationOperation
+      op.actionType as RemoteMutationOperation,
+      { customerConnectionId: op.customerConnectionId }
     );
   }
 
@@ -480,7 +541,12 @@ export async function confirmAndEnqueueCleanup(input: ConfirmCleanupInput) {
 
   const job = await enqueueJob({
     type: 'HYGIENE_EXECUTION',
-    payload: { operationId: op.id, actorEmail: input.actorEmail },
+    customerConnectionId: op.customerConnectionId,
+    payload: {
+      operationId: op.id,
+      customerConnectionId: op.customerConnectionId,
+      actorEmail: input.actorEmail,
+    },
     maxAttempts: 2,
   });
 
@@ -492,6 +558,7 @@ export async function confirmAndEnqueueCleanup(input: ConfirmCleanupInput) {
   });
 
   await recordAuditLog({
+    customerConnectionId: op.customerConnectionId,
     actorEmail: input.actorEmail,
     action: 'CLEANUP_OPERATION_CONFIRMED',
     resourceType: 'CleanupOperation',

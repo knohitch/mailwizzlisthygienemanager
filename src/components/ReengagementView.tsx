@@ -7,6 +7,8 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from './ui';
 
 interface PlanSummary {
   id: string;
+  customerConnectionId?: string;
+  customerConnection?: { customerName: string } | null;
   name: string;
   mailingListId: string;
   mailingList: { name: string; listUid: string };
@@ -30,6 +32,7 @@ export function ReengagementView({
   csrfToken,
   isDemoMode,
   phase1ReadOnly,
+  connections = [],
   lists,
   initialPlans,
 }: {
@@ -37,12 +40,25 @@ export function ReengagementView({
   csrfToken: string;
   isDemoMode: boolean;
   phase1ReadOnly: boolean;
-  lists: Array<{ id: string; name: string; listUid: string; syncedSubscriberCount: number }>;
+  connections?: Array<{ id: string; customerName: string; customerSlug: string }>;
+  lists: Array<{
+    id: string;
+    customerConnectionId?: string;
+    name: string;
+    listUid: string;
+    syncedSubscriberCount: number;
+  }>;
   initialPlans: PlanSummary[];
 }) {
+  const [selectedConnectionId, setSelectedConnectionId] = useState(
+    lists[0]?.customerConnectionId ?? connections[0]?.id ?? ''
+  );
+  const visibleLists = selectedConnectionId
+    ? lists.filter((l) => l.customerConnectionId === selectedConnectionId)
+    : lists;
   const [plans, setPlans] = useState<PlanSummary[]>(initialPlans);
   const [name, setName] = useState('Q4 Permission Pass Re-Engagement');
-  const [listId, setListId] = useState(lists[0]?.id ?? '');
+  const [listId, setListId] = useState(visibleLists[0]?.id ?? lists[0]?.id ?? '');
   const [windowDays, setWindowDays] = useState(14);
   const [campaignUids, setCampaignUids] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -70,6 +86,7 @@ export function ReengagementView({
           'X-CSRF-Token': csrfToken,
         },
         body: JSON.stringify({
+          customerConnectionId: selectedConnectionId || undefined,
           name,
           mailingListId: listId,
           responseWindowDays: windowDays,
@@ -139,6 +156,33 @@ export function ReengagementView({
           </CardHeader>
           <CardContent>
             <form onSubmit={createPlan} className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+              {connections.length > 0 && (
+                <div className="sm:col-span-4">
+                  <label className="block text-xs font-medium text-slate-700" htmlFor="plan-connection">
+                    Customer Connection
+                  </label>
+                  <select
+                    id="plan-connection"
+                    value={selectedConnectionId}
+                    onChange={(e) => {
+                      const nextConn = e.target.value;
+                      setSelectedConnectionId(nextConn);
+                      const firstList = nextConn
+                        ? lists.find((l) => l.customerConnectionId === nextConn)
+                        : lists[0];
+                      setListId(firstList?.id ?? '');
+                    }}
+                    className="mt-1 w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="">All Customers</option>
+                    {connections.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.customerName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-slate-700" htmlFor="plan-name">
                   Plan Name
@@ -162,7 +206,7 @@ export function ReengagementView({
                   onChange={(e) => setListId(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 >
-                  {lists.map((l) => (
+                  {visibleLists.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.name}
                     </option>
