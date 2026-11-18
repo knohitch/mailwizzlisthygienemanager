@@ -1269,9 +1269,19 @@ export function DashboardView({
                     Phase 2 Mutation Gate Status
                   </h3>
                   <p className="mt-0.5 text-xs text-[var(--fg-secondary)]">
-                    <code>ENABLE_MAILWIZZ_MUTATIONS=false</code> — All
-                    unsubscribe, segment creation, and subscriber move
-                    interfaces are disabled in Phase 1.
+                    {data.phase1ReadOnly ? (
+                      <>
+                        <code>ENABLE_MAILWIZZ_MUTATIONS=false</code> — All
+                        unsubscribe, segment creation, and subscriber move
+                        interfaces are disabled in Phase 1.
+                      </>
+                    ) : (
+                      <>
+                        <code>ENABLE_MAILWIZZ_MUTATIONS=true</code> — Full
+                        MailWizz hygiene operations are active with mandatory
+                        dry-run previews and encrypted recovery snapshots.
+                      </>
+                    )}
                   </p>
                 </div>
                 <Button variant="outline" size="sm" onClick={testPhase2Gate}>

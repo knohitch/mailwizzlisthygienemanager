@@ -485,14 +485,14 @@ export function ConnectionsView({
         />
 
         {hasQuarantined && (
-          <Card className="border-amber-200/90 bg-amber-50/80 px-4 py-3 text-xs text-amber-950">
+          <Card className="border-amber-200 bg-amber-50 px-4 py-3.5 text-xs text-amber-950">
             <div className="flex items-start gap-3">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
               <div>
-                <div className="font-semibold">
+                <div className="font-display text-sm font-bold">
                   Quarantined Legacy Account Present
                 </div>
-                <p className="mt-0.5 text-amber-900/90">
+                <p className="mt-0.5 text-xs leading-relaxed text-amber-800">
                   Legacy rows imported without an unambiguous single customer
                   owner were placed into a disabled quarantine container so they
                   never leak into active customer workspaces or sync
@@ -1210,8 +1210,9 @@ export function ConnectionsView({
                       )}
                     </div>
                     {conn.health?.lastErrorSafe && (
-                      <div className="text-xs font-medium text-rose-700">
-                        Last safe error: {conn.health.lastErrorSafe}
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-800">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>Last safe error: {conn.health.lastErrorSafe}</span>
                       </div>
                     )}
                   </div>
@@ -1260,7 +1261,7 @@ export function ConnectionsView({
                       onClick={() => void handleTriggerSync(conn)}
                     >
                       <RefreshCw className="h-3.5 w-3.5" />
-                      Sync Read-Only
+                      Sync Account
                     </Button>
                     <Link
                       href={`/compatibility?customerConnectionId=${encodeURIComponent(conn.id)}`}

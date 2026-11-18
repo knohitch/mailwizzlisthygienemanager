@@ -334,12 +334,16 @@ export function AppShell({
             <div className="font-display flex items-center justify-between font-bold text-[var(--fg-primary)]">
               <span className="flex items-center gap-1.5">
                 <Lock className="h-3.5 w-3.5 text-[var(--accent-fg)]" />
-                Mutation Gate
+                {phase1ReadOnly === false ? 'Execution Mode' : 'Mutation Gate'}
               </span>
-              <span className="text-[var(--accent-fg)]">Fail-Closed</span>
+              <span className="text-[var(--accent-fg)]">
+                {phase1ReadOnly === false ? 'Full Active' : 'Fail-Closed'}
+              </span>
             </div>
             <p className="mt-1 leading-relaxed text-[var(--fg-secondary)]">
-              Remote MailWizz writes are locked. AES-256-GCM snapshots active.
+              {phase1ReadOnly === false
+                ? 'Full MailWizz operations active with dry-run & AES-256-GCM snapshots.'
+                : 'Remote MailWizz writes are locked. AES-256-GCM snapshots active.'}
             </p>
           </div>
 
@@ -386,10 +390,15 @@ export function AppShell({
             </div>
 
             <div className="flex items-center gap-2.5">
-              {phase1ReadOnly !== false && (
+              {phase1ReadOnly !== false ? (
                 <Badge tone="emerald" dot>
                   <ShieldCheck className="h-3.5 w-3.5" />
                   Phase 1 Read-Only
+                </Badge>
+              ) : (
+                <Badge tone="emerald" dot>
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Full Operations Mode
                 </Badge>
               )}
               {isDemoMode && (

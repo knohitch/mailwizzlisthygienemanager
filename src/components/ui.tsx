@@ -177,15 +177,15 @@ export function Button({
 }) {
   const variants = {
     primary:
-      'bg-[var(--fg-primary)] text-[var(--bg-canvas)] hover:opacity-90 border border-transparent disabled:opacity-40',
+      'bg-[var(--fg-primary)] text-[var(--bg-canvas)] hover:opacity-90 border border-transparent disabled:opacity-55',
     secondary:
-      'bg-[var(--accent-bg)] text-[var(--accent-fg)] border border-[var(--accent-border)] hover:opacity-90 disabled:opacity-40',
+      'bg-[var(--accent-bg)] text-[var(--accent-fg)] border border-[var(--accent-border)] hover:opacity-90 disabled:opacity-55',
     outline:
-      'bg-[var(--bg-card)] text-[var(--fg-primary)] hover:bg-[var(--bg-elevated)] border border-[var(--border-default)] disabled:opacity-40',
+      'bg-[var(--bg-card)] text-[var(--fg-primary)] hover:bg-[var(--bg-elevated)] border border-[var(--border-default)] disabled:opacity-55',
     danger:
-      'bg-rose-50 text-rose-800 border border-rose-200 hover:opacity-90 disabled:opacity-40',
+      'bg-rose-600 text-white border border-rose-500 hover:bg-rose-500 disabled:opacity-55',
     ghost:
-      'bg-transparent text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg-primary)] border border-transparent disabled:opacity-40',
+      'bg-transparent text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg-primary)] border border-transparent disabled:opacity-55',
   };
   const sizes = {
     sm: 'px-3 py-1.5 text-xs',
@@ -290,9 +290,11 @@ export function AgentWorkflowStrip({
         </div>
         <div className="flex items-center gap-3 text-xs font-semibold text-[var(--fg-secondary)]">
           <span>
-            Mutation Gate:{' '}
+            Execution Mode:{' '}
             <strong className="text-[var(--accent-fg)]">
-              {phase1ReadOnly ? 'Read-Only Lock Active' : 'Guarded Mode'}
+              {phase1ReadOnly
+                ? 'Read-Only Lock Active'
+                : 'Full Operations Active'}
             </strong>
           </span>
           <span className="hidden text-[var(--fg-muted)] sm:inline">•</span>
