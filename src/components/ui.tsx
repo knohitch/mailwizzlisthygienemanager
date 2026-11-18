@@ -15,8 +15,9 @@ export function Card({
   return (
     <div
       {...props}
+      style={{ boxShadow: 'var(--card-shadow)' }}
       className={cn(
-        'rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] transition-colors',
+        'rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] transition-colors',
         className
       )}
     >
@@ -48,12 +49,12 @@ const BADGE_STYLES: Record<BadgeTone, string> = {
 
 const DOT_STYLES: Record<BadgeTone, string> = {
   slate: 'bg-slate-400',
-  emerald: 'bg-emerald-400',
-  teal: 'bg-teal-400',
-  amber: 'bg-amber-400',
-  rose: 'bg-rose-400',
-  indigo: 'bg-slate-200',
-  sky: 'bg-sky-400',
+  emerald: 'bg-emerald-500',
+  teal: 'bg-teal-500',
+  amber: 'bg-amber-500',
+  rose: 'bg-rose-500',
+  indigo: 'bg-slate-400',
+  sky: 'bg-sky-500',
 };
 
 export function StatusDot({
@@ -69,7 +70,7 @@ export function StatusDot({
     <span
       aria-hidden="true"
       className={cn(
-        'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+        'inline-block h-2 w-2 shrink-0 rounded-full',
         DOT_STYLES[tone],
         pulse && 'animate-pulse',
         className
@@ -92,12 +93,12 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-[11px] font-medium leading-4 tracking-tight',
+        'font-display inline-flex items-center gap-1.5 rounded-md border px-2.5 py-0.5 text-xs font-bold leading-5 tracking-tight',
         BADGE_STYLES[tone],
         className
       )}
     >
-      {dot && <StatusDot tone={tone} />}
+      {dot && <StatusDot tone={tone} className="h-1.5 w-1.5" />}
       {children}
     </span>
   );
@@ -113,7 +114,7 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        'border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-3',
+        'border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-5 py-3.5',
         className
       )}
     >
@@ -132,7 +133,7 @@ export function CardTitle({
   return (
     <h2
       className={cn(
-        'text-xs font-semibold uppercase tracking-wider text-[var(--fg-primary)]',
+        'font-display text-base font-bold tracking-tight text-[var(--fg-primary)]',
         className
       )}
     >
@@ -149,7 +150,7 @@ export function CardDescription({
   children: React.ReactNode;
 }) {
   return (
-    <p className={cn('mt-0.5 text-xs text-[var(--fg-muted)]', className)}>
+    <p className={cn('mt-0.5 text-xs text-[var(--fg-secondary)]', className)}>
       {children}
     </p>
   );
@@ -162,7 +163,7 @@ export function CardContent({
   className?: string;
   children: React.ReactNode;
 }) {
-  return <div className={cn('p-4', className)}>{children}</div>;
+  return <div className={cn('p-5', className)}>{children}</div>;
 }
 
 export function Button({
@@ -176,25 +177,25 @@ export function Button({
 }) {
   const variants = {
     primary:
-      'bg-[var(--fg-primary)] text-[var(--bg-canvas)] hover:opacity-90 border border-transparent disabled:opacity-35',
+      'bg-[var(--fg-primary)] text-[var(--bg-canvas)] hover:opacity-90 border border-transparent disabled:opacity-40',
     secondary:
-      'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-35',
+      'bg-[var(--accent-bg)] text-[var(--accent-fg)] border border-[var(--accent-border)] hover:opacity-90 disabled:opacity-40',
     outline:
-      'bg-[var(--bg-well)] text-[var(--fg-primary)] hover:bg-[var(--bg-elevated)] border border-[var(--border-default)] disabled:opacity-35',
+      'bg-[var(--bg-card)] text-[var(--fg-primary)] hover:bg-[var(--bg-elevated)] border border-[var(--border-default)] disabled:opacity-40',
     danger:
-      'bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 disabled:opacity-35',
+      'bg-rose-50 text-rose-800 border border-rose-200 hover:opacity-90 disabled:opacity-40',
     ghost:
-      'bg-transparent text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg-primary)] border border-transparent disabled:opacity-35',
+      'bg-transparent text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg-primary)] border border-transparent disabled:opacity-40',
   };
   const sizes = {
-    sm: 'px-2.5 py-1.5 text-xs',
-    md: 'px-3.5 py-2 text-xs',
+    sm: 'px-3 py-1.5 text-xs',
+    md: 'px-4 py-2 text-sm',
   };
   return (
     <button
       {...props}
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium tracking-tight transition-all focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--fg-secondary)] disabled:cursor-not-allowed',
+        'font-display inline-flex items-center justify-center gap-1.5 rounded-lg font-bold tracking-tight transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-fg)] disabled:cursor-not-allowed',
         variants[variant],
         sizes[size],
         className
@@ -274,27 +275,30 @@ export function AgentWorkflowStrip({
   return (
     <div
       aria-label="Agent operational workflow pipeline"
+      style={{ boxShadow: 'var(--card-shadow)' }}
       className={cn(
-        'overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)]',
+        'overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)]',
         className
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-3.5 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5">
         <div className="flex items-center gap-2">
           <StatusDot tone="emerald" pulse />
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-secondary)]">
-            AGENT_LOOP // DETERMINISTIC HYGIENE PIPELINE
+          <span className="font-display text-xs font-bold uppercase tracking-wider text-[var(--fg-primary)]">
+            Autonomous Hygiene Agent Pipeline
           </span>
         </div>
-        <div className="flex items-center gap-3 font-mono text-[11px] text-[var(--fg-muted)]">
+        <div className="flex items-center gap-3 text-xs font-semibold text-[var(--fg-secondary)]">
           <span>
-            GATE:{' '}
-            <strong className="text-emerald-400">
-              {phase1ReadOnly ? 'READ_ONLY_LOCK' : 'GUARDED_MUTATION'}
+            Mutation Gate:{' '}
+            <strong className="text-[var(--accent-fg)]">
+              {phase1ReadOnly ? 'Read-Only Lock Active' : 'Guarded Mode'}
             </strong>
           </span>
-          <span className="hidden sm:inline">•</span>
-          <span className="hidden sm:inline">SNAPSHOT: AES-256-GCM</span>
+          <span className="hidden text-[var(--fg-muted)] sm:inline">•</span>
+          <span className="hidden text-[var(--fg-muted)] sm:inline">
+            Snapshot: AES-256-GCM
+          </span>
         </div>
       </div>
 
@@ -306,32 +310,35 @@ export function AgentWorkflowStrip({
               key={stage.id}
               href={stage.href}
               className={cn(
-                'group relative flex flex-col justify-between px-3.5 py-2.5 text-left transition-colors',
+                'group relative flex flex-col justify-between px-4 py-3 text-left transition-colors',
                 isActive
-                  ? 'bg-[var(--bg-elevated)] text-[var(--fg-primary)]'
+                  ? 'bg-[var(--accent-bg)] text-[var(--fg-primary)]'
                   : 'bg-[var(--bg-card)] text-[var(--fg-secondary)] hover:bg-[var(--bg-well)] hover:text-[var(--fg-primary)]'
               )}
             >
               {isActive && (
                 <span
                   aria-hidden="true"
-                  className="absolute inset-x-0 top-0 h-0.5 bg-emerald-400"
+                  className="absolute inset-x-0 top-0 h-0.5 bg-[var(--accent-fg)]"
                 />
               )}
               <div className="flex items-center justify-between gap-1.5">
                 <span
                   className={cn(
-                    'font-mono text-[10px] uppercase tracking-wider',
+                    'font-display text-xs font-bold uppercase tracking-wide',
                     isActive
-                      ? 'font-semibold text-emerald-400'
+                      ? 'text-[var(--accent-fg)]'
                       : 'text-[var(--fg-muted)]'
                   )}
                 >
-                  [{stage.step}] {stage.label}
+                  Stage {stage.step}
                 </span>
                 {isActive && <StatusDot tone="emerald" pulse />}
               </div>
-              <div className="mt-1 truncate text-[11px] text-[var(--fg-muted)]">
+              <div className="font-display mt-0.5 text-sm font-bold text-[var(--fg-primary)]">
+                {stage.label}
+              </div>
+              <div className="mt-0.5 truncate text-xs text-[var(--fg-secondary)]">
                 {stage.summary}
               </div>
             </Link>

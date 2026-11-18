@@ -446,15 +446,15 @@ export function DeliverabilityView({
         <div className="flex flex-col justify-between gap-4 border-b border-slate-200/80 pb-5 md:flex-row md:items-center">
           <div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
-                <Globe className="h-3 w-3" />
-                DELIVERABILITY_DNS_INTELLIGENCE
+              <span className="font-display inline-flex items-center gap-1.5 rounded-md border border-[var(--accent-border)] bg-[var(--accent-bg)] px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-[var(--accent-fg)]">
+                <Globe className="h-3.5 w-3.5" />
+                Deliverability &amp; DNS Intelligence
               </span>
             </div>
-            <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900">
+            <h1 className="font-display mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
               Email Deliverability Diagnostics
             </h1>
-            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
+            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
               Source-separated diagnostics for MailWizz 3.0.5, Alibaba Cloud
               DirectMail SMTP/API, public DNS authentication, and controlled
               seed inbox placement tests.

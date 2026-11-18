@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
   BarChart3,
@@ -20,7 +21,6 @@ import {
   RefreshCw,
   ShieldAlert,
   Sparkles,
-  Terminal,
   Users,
   XCircle,
 } from 'lucide-react';
@@ -181,21 +181,21 @@ function TelemetryCell({
   icon?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col justify-between bg-[var(--bg-card)] p-4 transition-colors hover:bg-[var(--bg-well)]">
+    <div className="flex flex-col justify-between bg-[var(--bg-card)] p-4.5 transition-colors hover:bg-[var(--bg-well)]">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <StatusDot tone={tone} />
-          <div className="truncate font-mono text-[11px] font-medium text-[var(--fg-secondary)]">
+          <div className="font-display truncate text-xs font-bold text-[var(--fg-secondary)]">
             {label}
           </div>
         </div>
         {icon && <div className="shrink-0 text-[var(--fg-muted)]">{icon}</div>}
       </div>
-      <div className="mt-2.5 font-mono text-2xl font-semibold tracking-tight tabular-nums text-[var(--fg-primary)]">
+      <div className="font-display mt-2 text-2xl font-extrabold tracking-tight tabular-nums text-[var(--fg-primary)]">
         {typeof value === 'number' ? value.toLocaleString() : value}
       </div>
       {subtext && (
-        <div className="mt-1 text-[11px] leading-snug text-[var(--fg-muted)]">
+        <div className="mt-1 text-xs leading-snug text-[var(--fg-secondary)]">
           {subtext}
         </div>
       )}
@@ -365,31 +365,34 @@ export function DashboardView({
       isDemoMode={data.isDemoMode}
       phase1ReadOnly={data.phase1ReadOnly}
     >
-      <div className="space-y-5">
+      <div className="space-y-6">
         {/* Top Command Header & Scope Controls */}
-        <div className="flex flex-col justify-between gap-4 border-b border-[var(--border-subtle)] pb-4 lg:flex-row lg:items-center">
+        <div className="flex flex-col justify-between gap-4 border-b border-[var(--border-subtle)] pb-5 lg:flex-row lg:items-center">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
-                <Terminal className="h-3 w-3" />
-                AGENT_COMMAND_CENTER
+            <div className="flex items-center gap-2.5">
+              <span className="font-display inline-flex items-center gap-1.5 rounded-md border border-[var(--accent-border)] bg-[var(--accent-bg)] px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-[var(--accent-fg)]">
+                <Activity className="h-3.5 w-3.5" />
+                Agent Command Center
               </span>
-              <span className="font-mono text-[11px] text-[var(--fg-muted)]">
-                TZ: <strong className="text-[var(--fg-secondary)]">{data.timezone}</strong>
+              <span className="text-xs font-medium text-[var(--fg-secondary)]">
+                Timezone:{' '}
+                <strong className="text-[var(--fg-primary)]">
+                  {data.timezone}
+                </strong>
               </span>
             </div>
-            <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-[var(--fg-primary)]">
+            <h1 className="font-display mt-2 text-2xl font-extrabold tracking-tight text-[var(--fg-primary)]">
               Deliverability &amp; List Hygiene Overview
             </h1>
-            <p className="mt-0.5 font-mono text-[11px] text-[var(--fg-muted)]">
-              LOOKBACK:{' '}
-              <span className="text-[var(--fg-secondary)]">
-                {data.lookbackDays}d
-              </span>{' '}
-              • MIN_DELIVERED_CAMPAIGNS:{' '}
-              <span className="text-[var(--fg-secondary)]">
+            <p className="mt-1 text-sm text-[var(--fg-secondary)]">
+              Engagement lookback window:{' '}
+              <strong className="text-[var(--fg-primary)]">
+                {data.lookbackDays} days
+              </strong>{' '}
+              • Minimum delivered campaigns before inactive classification:{' '}
+              <strong className="text-[var(--fg-primary)]">
                 {data.minDeliveredCampaigns}
-              </span>
+              </strong>
             </p>
           </div>
 
@@ -405,7 +408,7 @@ export function DashboardView({
                   setSelectedListId('');
                   void refresh(periodDays, '', next);
                 }}
-                className="rounded-md border border-[var(--border-default)] bg-[var(--bg-well)] px-2.5 py-1.5 font-mono text-xs text-[var(--fg-primary)]"
+                className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-xs font-semibold text-[var(--fg-primary)]"
               >
                 <option value="">
                   Global Overview (All {data.customerAccounts?.length ?? 0}{' '}
@@ -427,7 +430,7 @@ export function DashboardView({
                 setPeriodDays(next);
                 void refresh(next, selectedListId, selectedConnectionId);
               }}
-              className="rounded-md border border-[var(--border-default)] bg-[var(--bg-well)] px-2.5 py-1.5 font-mono text-xs text-[var(--fg-primary)]"
+              className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-xs font-semibold text-[var(--fg-primary)]"
             >
               <option value={30}>Last 30 days</option>
               <option value={60}>Last 60 days</option>
@@ -444,7 +447,7 @@ export function DashboardView({
                 setSelectedListId(next);
                 void refresh(periodDays, next, selectedConnectionId);
               }}
-              className="rounded-md border border-[var(--border-default)] bg-[var(--bg-well)] px-2.5 py-1.5 font-mono text-xs text-[var(--fg-primary)]"
+              className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-xs font-semibold text-[var(--fg-primary)]"
             >
               <option value="">All Mailing Lists ({data.lists.length})</option>
               {data.lists.map((l) => (
@@ -460,7 +463,7 @@ export function DashboardView({
               onClick={() => triggerSyncAction('ANALYZE_HYGIENE')}
               disabled={loading}
             >
-              <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+              <Sparkles className="h-3.5 w-3.5 text-[var(--accent-fg)]" />
               Re-Analyze
             </Button>
 
@@ -494,9 +497,9 @@ export function DashboardView({
                     )}`
                   : ''
               }${selectedListId ? `&listId=${encodeURIComponent(selectedListId)}` : ''}`}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--bg-well)] px-2.5 py-1.5 text-xs font-medium text-[var(--fg-primary)] transition-colors hover:bg-[var(--bg-elevated)]"
+              className="font-display inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-xs font-bold text-[var(--fg-primary)] transition-colors hover:bg-[var(--bg-elevated)]"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-3.5 w-3.5 text-[var(--accent-fg)]" />
               Encrypted Export
             </a>
           </div>
@@ -510,28 +513,25 @@ export function DashboardView({
 
         {/* Connection / Action Alerts */}
         {!data.connectionConfigured && (
-          <Card className="border-[var(--border-default)] bg-[var(--bg-card)] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-amber-500/30 bg-amber-500/10 text-amber-400">
+          <Card className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500">
                   <Database className="h-4 w-4" />
                 </div>
                 <div>
-                  <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
+                  <h2 className="font-display text-base font-bold text-[var(--fg-primary)]">
                     Live MailWizz 3.0.5 Connection Not Configured Yet
                   </h2>
-                  <p className="mt-0.5 text-xs text-[var(--fg-secondary)]">
+                  <p className="mt-0.5 text-xs leading-relaxed text-[var(--fg-secondary)]">
                     No live MailWizz instance is accessed until you provide your
-                    API URL and{' '}
-                    <code className="rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-1 py-0.5 font-mono text-[11px] text-[var(--fg-primary)]">
-                      X-Api-Key
-                    </code>{' '}
-                    in Customer Connections or Settings. You can evaluate the
-                    full agent pipeline using synthetic demo fixtures.
+                    API URL and <code>X-Api-Key</code> in Customer Connections
+                    or Settings. You can evaluate the full agent pipeline using
+                    synthetic demo fixtures.
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 {!data.isDemoMode ? (
                   <Button
                     variant="outline"
@@ -539,7 +539,7 @@ export function DashboardView({
                     onClick={() => triggerSyncAction('SEED_DEMO_DATA')}
                     disabled={loading}
                   >
-                    <FlaskConical className="h-3.5 w-3.5 text-amber-400" />
+                    <FlaskConical className="h-3.5 w-3.5 text-amber-500" />
                     Load Synthetic Demo Data
                   </Button>
                 ) : (
@@ -554,7 +554,7 @@ export function DashboardView({
                 )}
                 <Link
                   href="/settings"
-                  className="inline-flex items-center gap-1 rounded-md bg-[var(--fg-primary)] px-3 py-1.5 text-xs font-medium text-[var(--bg-canvas)] hover:opacity-90"
+                  className="font-display inline-flex items-center gap-1.5 rounded-lg bg-[var(--fg-primary)] px-3.5 py-1.5 text-xs font-bold text-[var(--bg-canvas)] hover:opacity-90"
                 >
                   Configure MailWizz
                   <ArrowRight className="h-3.5 w-3.5" />
@@ -567,7 +567,7 @@ export function DashboardView({
         {bannerMsg && (
           <div
             role="status"
-            className={`rounded-md border px-4 py-2.5 text-xs font-medium ${
+            className={`rounded-lg border px-4 py-3 text-xs font-semibold ${
               bannerMsg.type === 'ok'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
                 : 'border-rose-200 bg-rose-50 text-rose-900'
@@ -584,13 +584,13 @@ export function DashboardView({
             data-testid="customer-accounts-overview"
           >
             <Card className="overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-5 py-3">
+                <div className="flex items-center gap-2.5">
                   <StatusDot tone="emerald" />
-                  <h2 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-secondary)]">
+                  <h2 className="font-display text-sm font-bold text-[var(--fg-primary)]">
                     {selectedConnectionId
-                      ? 'ACTIVE_CUSTOMER_SCOPE'
-                      : `CONNECTED_CUSTOMER_ACCOUNTS (${data.customerAccounts?.length ?? 0})`}
+                      ? 'Active Customer Account Scope'
+                      : `Connected Customer Accounts (${data.customerAccounts?.length ?? 0})`}
                   </h2>
                   {selectedConnectionId && (
                     <button
@@ -600,33 +600,33 @@ export function DashboardView({
                         setSelectedListId('');
                         void refresh(periodDays, '', '');
                       }}
-                      className="font-mono text-[11px] font-medium text-emerald-400 hover:underline"
+                      className="font-display text-xs font-bold text-[var(--accent-fg)] hover:underline"
                     >
-                      [Show All Customers]
+                      Show All Customers
                     </button>
                   )}
                 </div>
                 <Link
                   href="/connections"
-                  className="font-mono text-[11px] font-medium text-[var(--fg-primary)] hover:underline"
+                  className="font-display text-xs font-bold text-[var(--accent-fg)] hover:underline"
                 >
                   Manage Customer Connections &rarr;
                 </Link>
               </div>
-              <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3.5 p-5 md:grid-cols-2 lg:grid-cols-3">
                 {data.customerAccounts?.map((acct) => {
                   const active = selectedConnectionId === acct.id;
                   return (
                     <div
                       key={acct.id}
-                      className={`rounded-md border p-3.5 text-xs transition-colors ${
+                      className={`rounded-xl border p-4 text-xs transition-colors ${
                         active
-                          ? 'border-emerald-500/40 bg-[var(--bg-elevated)]'
+                          ? 'border-[var(--accent-border)] bg-[var(--accent-bg)]'
                           : 'border-[var(--border-default)] bg-[var(--bg-well)] hover:border-[var(--border-strong)]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="truncate font-semibold text-[var(--fg-primary)]">
+                        <div className="font-display truncate text-sm font-bold text-[var(--fg-primary)]">
                           {acct.customerName}
                         </div>
                         <Badge
@@ -645,21 +645,18 @@ export function DashboardView({
                           {acct.isQuarantine ? 'QUARANTINED' : acct.status}
                         </Badge>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 font-mono text-[11px] text-[var(--fg-muted)]">
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 text-xs text-[var(--fg-secondary)]">
                         <span>{acct.hostname}</span>
                         <span>
-                          KEY:{' '}
-                          <code className="rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-[var(--fg-secondary)]">
-                            {acct.apiKeyMasked ?? 'none'}
-                          </code>
+                          Key: <code>{acct.apiKeyMasked ?? 'none'}</code>
                         </span>
                         {acct.isPaused && (
-                          <span className="font-medium text-amber-400">
-                            PAUSED
+                          <span className="font-bold text-amber-500">
+                            Paused
                           </span>
                         )}
                       </div>
-                      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-subtle)] pt-2.5 font-mono text-[11px] text-[var(--fg-secondary)]">
+                      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-subtle)] pt-2.5 text-xs text-[var(--fg-secondary)]">
                         <span className="tabular-nums">
                           <strong className="text-[var(--fg-primary)]">
                             {acct.listsCount}
@@ -677,7 +674,7 @@ export function DashboardView({
                             setSelectedListId('');
                             void refresh(periodDays, '', acct.id);
                           }}
-                          className="font-semibold text-emerald-400 hover:underline"
+                          className="font-display font-bold text-[var(--accent-fg)] hover:underline"
                         >
                           {active ? 'Active Scope' : 'Inspect Account'}
                         </button>
@@ -694,13 +691,13 @@ export function DashboardView({
         <section aria-label="Subscriber and hygiene KPIs">
           <Card className="overflow-hidden">
             {/* Matrix Header + Distribution Bar */}
-            <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-3">
+            <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-5 py-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
-                  SUBSCRIBER_INTELLIGENCE // AUDIENCE_HYGIENE_MATRIX (
-                  {k.totalSubscribers.toLocaleString()} TOTAL)
+                <div className="font-display text-sm font-bold text-[var(--fg-primary)]">
+                  Audience Hygiene Distribution (
+                  {k.totalSubscribers.toLocaleString()} Total Subscribers)
                 </div>
-                <div className="flex flex-wrap items-center gap-4 font-mono text-[11px] text-[var(--fg-secondary)]">
+                <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-[var(--fg-secondary)]">
                   <span className="flex items-center gap-1.5">
                     <StatusDot tone="emerald" />
                     Strong ({strongPct}%)
@@ -715,28 +712,28 @@ export function DashboardView({
                   </span>
                   <span className="flex items-center gap-1.5">
                     <StatusDot tone="sky" />
-                    Insufficient/Unknown ({insufficientPct}%)
+                    Insufficient / Unknown ({insufficientPct}%)
                   </span>
                 </div>
               </div>
-              <div className="mt-2.5 flex h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+              <div className="mt-2.5 flex h-2 w-full overflow-hidden rounded-full bg-[var(--bg-elevated)]">
                 <div
-                  className="bg-emerald-400 transition-all"
+                  className="bg-emerald-500 transition-all"
                   style={{ width: `${strongPct}%` }}
                   title={`Strong Engagement: ${k.engagedStrong.toLocaleString()}`}
                 />
                 <div
-                  className="bg-teal-400 transition-all"
+                  className="bg-teal-500 transition-all"
                   style={{ width: `${openOnlyPct}%` }}
                   title={`Open-Only Engagement: ${k.engagedOpenOnly.toLocaleString()}`}
                 />
                 <div
-                  className="bg-amber-400 transition-all"
+                  className="bg-amber-500 transition-all"
                   style={{ width: `${inactivePct}%` }}
                   title={`Potentially Inactive: ${k.potentiallyInactiveSubscribers.toLocaleString()}`}
                 />
                 <div
-                  className="bg-sky-400 transition-all"
+                  className="bg-sky-500 transition-all"
                   style={{ width: `${insufficientPct}%` }}
                   title="Insufficient / Unknown History"
                 />
@@ -750,28 +747,28 @@ export function DashboardView({
                 value={k.totalLists}
                 subtext="Auto-discovered via read-only API"
                 tone="slate"
-                icon={<Database className="h-3.5 w-3.5" />}
+                icon={<Database className="h-4 w-4" />}
               />
               <TelemetryCell
                 label="Total Subscribers"
                 value={k.totalSubscribers}
                 subtext={`${k.confirmedSubscribers.toLocaleString()} confirmed • ${k.unconfirmedSubscribers.toLocaleString()} unconfirmed`}
                 tone="indigo"
-                icon={<Users className="h-3.5 w-3.5" />}
+                icon={<Users className="h-4 w-4" />}
               />
               <TelemetryCell
                 label="Recently Engaged (Total)"
                 value={k.recentlyEngagedTotal}
                 subtext={`${k.engagedStrong.toLocaleString()} strong (clicks/replies) • ${k.engagedOpenOnly.toLocaleString()} open-only`}
                 tone="emerald"
-                icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+                icon={<CheckCircle2 className="h-4 w-4" />}
               />
               <TelemetryCell
                 label="Potentially Inactive"
                 value={k.potentiallyInactiveSubscribers}
                 subtext={`Verified >= ${data.minDeliveredCampaigns} delivered campaigns & 0 engagement`}
                 tone="amber"
-                icon={<AlertTriangle className="h-3.5 w-3.5" />}
+                icon={<AlertTriangle className="h-4 w-4" />}
               />
 
               <TelemetryCell
@@ -797,7 +794,7 @@ export function DashboardView({
                 value={k.unknownHistorySubscribers}
                 subtext="Inactivity decisions disabled (needs Priority B/C/D)"
                 tone="slate"
-                icon={<HelpCircle className="h-3.5 w-3.5" />}
+                icon={<HelpCircle className="h-4 w-4" />}
               />
 
               <TelemetryCell
@@ -811,14 +808,14 @@ export function DashboardView({
                 value={k.hardBouncedSubscribers}
                 subtext="From MailWizz campaign bounce logs"
                 tone="rose"
-                icon={<XCircle className="h-3.5 w-3.5" />}
+                icon={<XCircle className="h-4 w-4" />}
               />
               <TelemetryCell
                 label="Spam Complaints"
                 value={k.complainedSubscribers}
                 subtext={`Campaign aggregate complaints: ${k.totalComplaints}`}
                 tone="rose"
-                icon={<ShieldAlert className="h-3.5 w-3.5" />}
+                icon={<ShieldAlert className="h-4 w-4" />}
               />
               <TelemetryCell
                 label="Excluded (Protected)"
@@ -831,67 +828,67 @@ export function DashboardView({
         </section>
 
         {/* C. Campaign Delivery Telemetry & Agent Action Launchpad */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
           <section
             aria-label="Campaign delivery and engagement metrics"
             className="lg:col-span-7"
           >
             <Card className="h-full overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5">
-                <h2 className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
-                  <Mail className="h-3.5 w-3.5 text-[var(--fg-muted)]" />
-                  CAMPAIGN_TELEMETRY ({periodDays}D_WINDOW)
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-5 py-3">
+                <h2 className="font-display flex items-center gap-2 text-sm font-bold text-[var(--fg-primary)]">
+                  <Mail className="h-4 w-4 text-[var(--accent-fg)]" />
+                  Campaign Delivery &amp; Engagement ({periodDays}-Day Window)
                 </h2>
-                <span className="font-mono text-[11px] text-[var(--fg-muted)]">
-                  GET /campaigns/&#123;uid&#125;/stats
+                <span className="text-xs text-[var(--fg-secondary)]">
+                  <code>GET /campaigns/&#123;uid&#125;/stats</code>
                 </span>
               </div>
               <div className="grid grid-cols-2 divide-x divide-y divide-[var(--border-subtle)] sm:grid-cols-3">
-                <div className="p-3.5">
-                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
+                <div className="p-4">
+                  <div className="text-xs font-medium text-[var(--fg-secondary)]">
                     Campaigns Sent
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-[var(--fg-primary)]">
+                  <div className="font-display mt-1 text-xl font-extrabold tabular-nums text-[var(--fg-primary)]">
                     {k.campaignsSentInPeriod.toLocaleString()}
                   </div>
                 </div>
-                <div className="p-3.5">
-                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
+                <div className="p-4">
+                  <div className="text-xs font-medium text-[var(--fg-secondary)]">
                     Delivery Success
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-emerald-400">
+                  <div className="font-display mt-1 text-xl font-extrabold tabular-nums text-[var(--accent-fg)]">
                     {k.totalDeliverySuccess.toLocaleString()}
                   </div>
                 </div>
-                <div className="p-3.5">
-                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
+                <div className="p-4">
+                  <div className="text-xs font-medium text-[var(--fg-secondary)]">
                     Unique Opens
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-teal-400">
+                  <div className="font-display mt-1 text-xl font-extrabold tabular-nums text-[var(--fg-primary)]">
                     {k.totalUniqueOpens.toLocaleString()}
                   </div>
                 </div>
-                <div className="p-3.5">
-                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
+                <div className="p-4">
+                  <div className="text-xs font-medium text-[var(--fg-secondary)]">
                     Unique Clicks
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-[var(--fg-primary)]">
+                  <div className="font-display mt-1 text-xl font-extrabold tabular-nums text-[var(--fg-primary)]">
                     {k.totalUniqueClicks.toLocaleString()}
                   </div>
                 </div>
-                <div className="p-3.5">
-                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
+                <div className="p-4">
+                  <div className="text-xs font-medium text-[var(--fg-secondary)]">
                     Delivery Errors
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-rose-400">
+                  <div className="font-display mt-1 text-xl font-extrabold tabular-nums text-rose-500">
                     {k.totalDeliveryErrors.toLocaleString()}
                   </div>
                 </div>
-                <div className="p-3.5">
-                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
+                <div className="p-4">
+                  <div className="text-xs font-medium text-[var(--fg-secondary)]">
                     Bounces (Hard / Soft)
                   </div>
-                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-amber-400">
+                  <div className="font-display mt-1 text-xl font-extrabold tabular-nums text-amber-500">
                     {k.totalHardBounces.toLocaleString()} /{' '}
                     {k.totalSoftBounces.toLocaleString()}
                   </div>
@@ -905,27 +902,27 @@ export function DashboardView({
             className="lg:col-span-5"
           >
             <Card className="h-full overflow-hidden">
-              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5">
-                <h2 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
-                  AGENT_DISPATCH // OPERATIONS
+              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-5 py-3">
+                <h2 className="font-display text-sm font-bold text-[var(--fg-primary)]">
+                  Recommended Agent Operations
                 </h2>
                 <Badge tone="emerald" dot>
-                  GUARDED
+                  Guarded
                 </Badge>
               </div>
               <div className="grid grid-cols-1 divide-x divide-y divide-[var(--border-subtle)] sm:grid-cols-2">
                 <Link
                   href="/cleanup"
-                  className="group flex flex-col justify-between p-3.5 transition-colors hover:bg-[var(--bg-well)]"
+                  className="group flex flex-col justify-between p-4 transition-colors hover:bg-[var(--bg-well)]"
                 >
                   <div className="flex items-center justify-between">
-                    <Filter className="h-3.5 w-3.5 text-emerald-400" />
-                    <ArrowRight className="h-3.5 w-3.5 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
+                    <Filter className="h-4 w-4 text-[var(--accent-fg)]" />
+                    <ArrowRight className="h-4 w-4 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
                   </div>
-                  <div className="mt-2 font-mono text-xs font-semibold text-[var(--fg-primary)]">
+                  <div className="font-display mt-2.5 text-sm font-bold text-[var(--fg-primary)]">
                     Dry-Run Cleanup
                   </div>
-                  <div className="text-[11px] text-[var(--fg-muted)]">
+                  <div className="text-xs text-[var(--fg-secondary)]">
                     {k.potentiallyInactiveSubscribers.toLocaleString()} inactive
                     candidates
                   </div>
@@ -933,48 +930,48 @@ export function DashboardView({
 
                 <Link
                   href="/reengagement"
-                  className="group flex flex-col justify-between p-3.5 transition-colors hover:bg-[var(--bg-well)]"
+                  className="group flex flex-col justify-between p-4 transition-colors hover:bg-[var(--bg-well)]"
                 >
                   <div className="flex items-center justify-between">
-                    <MailCheck className="h-3.5 w-3.5 text-emerald-400" />
-                    <ArrowRight className="h-3.5 w-3.5 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
+                    <MailCheck className="h-4 w-4 text-[var(--accent-fg)]" />
+                    <ArrowRight className="h-4 w-4 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
                   </div>
-                  <div className="mt-2 font-mono text-xs font-semibold text-[var(--fg-primary)]">
+                  <div className="font-display mt-2.5 text-sm font-bold text-[var(--fg-primary)]">
                     Permission Pass
                   </div>
-                  <div className="text-[11px] text-[var(--fg-muted)]">
+                  <div className="text-xs text-[var(--fg-secondary)]">
                     Manual campaign approval
                   </div>
                 </Link>
 
                 <Link
                   href="/reports"
-                  className="group flex flex-col justify-between p-3.5 transition-colors hover:bg-[var(--bg-well)]"
+                  className="group flex flex-col justify-between p-4 transition-colors hover:bg-[var(--bg-well)]"
                 >
                   <div className="flex items-center justify-between">
-                    <BarChart3 className="h-3.5 w-3.5 text-emerald-400" />
-                    <ArrowRight className="h-3.5 w-3.5 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
+                    <BarChart3 className="h-4 w-4 text-[var(--accent-fg)]" />
+                    <ArrowRight className="h-4 w-4 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
                   </div>
-                  <div className="mt-2 font-mono text-xs font-semibold text-[var(--fg-primary)]">
+                  <div className="font-display mt-2.5 text-sm font-bold text-[var(--fg-primary)]">
                     Before/After Reports
                   </div>
-                  <div className="text-[11px] text-[var(--fg-muted)]">
+                  <div className="text-xs text-[var(--fg-secondary)]">
                     8 verified CSV report views
                   </div>
                 </Link>
 
                 <Link
                   href="/compatibility"
-                  className="group flex flex-col justify-between p-3.5 transition-colors hover:bg-[var(--bg-well)]"
+                  className="group flex flex-col justify-between p-4 transition-colors hover:bg-[var(--bg-well)]"
                 >
                   <div className="flex items-center justify-between">
-                    <GitCompareArrows className="h-3.5 w-3.5 text-emerald-400" />
-                    <ArrowRight className="h-3.5 w-3.5 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
+                    <GitCompareArrows className="h-4 w-4 text-[var(--accent-fg)]" />
+                    <ArrowRight className="h-4 w-4 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
                   </div>
-                  <div className="mt-2 font-mono text-xs font-semibold text-[var(--fg-primary)]">
+                  <div className="font-display mt-2.5 text-sm font-bold text-[var(--fg-primary)]">
                     Adapter Contracts
                   </div>
-                  <div className="text-[11px] text-[var(--fg-muted)]">
+                  <div className="text-xs text-[var(--fg-secondary)]">
                     15 read-only endpoint probes
                   </div>
                 </Link>
@@ -984,10 +981,10 @@ export function DashboardView({
         </div>
 
         {/* D. Detailed Operational Tabs */}
-        <Tabs.Root defaultValue="lists" className="space-y-3">
+        <Tabs.Root defaultValue="lists" className="space-y-4">
           <Tabs.List
             aria-label="Dashboard sections"
-            className="inline-flex flex-wrap gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-well)] p-1"
+            className="inline-flex flex-wrap gap-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-well)] p-1.5"
           >
             {[
               { id: 'lists', label: `Mailing Lists (${data.lists.length})` },
@@ -1004,7 +1001,7 @@ export function DashboardView({
               <Tabs.Trigger
                 key={tab.id}
                 value={tab.id}
-                className="rounded px-3 py-1.5 font-mono text-xs font-medium text-[var(--fg-secondary)] transition-colors hover:text-[var(--fg-primary)] data-[state=active]:border data-[state=active]:border-[var(--border-default)] data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-[var(--fg-primary)]"
+                className="font-display rounded-lg px-3.5 py-2 text-xs font-bold text-[var(--fg-secondary)] transition-colors hover:text-[var(--fg-primary)] data-[state=active]:border data-[state=active]:border-[var(--accent-border)] data-[state=active]:bg-[var(--accent-bg)] data-[state=active]:text-[var(--fg-primary)]"
               >
                 {tab.label}
               </Tabs.Trigger>
@@ -1015,8 +1012,8 @@ export function DashboardView({
           <Tabs.Content value="lists">
             <Card className="overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-muted)]">
+                <table className="w-full text-left text-sm">
+                  <thead className="font-display border-b border-[var(--border-subtle)] bg-[var(--bg-well)] text-xs font-bold uppercase tracking-wider text-[var(--fg-secondary)]">
                     <tr>
                       <th className="px-4 py-3">List</th>
                       <th className="px-4 py-3 text-right">Total</th>
@@ -1033,7 +1030,7 @@ export function DashboardView({
                       <tr>
                         <td
                           colSpan={8}
-                          className="px-4 py-8 text-center font-mono text-xs text-[var(--fg-muted)]"
+                          className="px-4 py-8 text-center text-sm text-[var(--fg-secondary)]"
                         >
                           No mailing lists synced yet. Connect MailWizz in
                           Settings or load synthetic demo data.
@@ -1045,8 +1042,8 @@ export function DashboardView({
                           key={list.id}
                           className="transition-colors hover:bg-[var(--bg-well)]"
                         >
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap items-center gap-2 font-medium text-[var(--fg-primary)]">
+                          <td className="px-4 py-3.5">
+                            <div className="font-display flex flex-wrap items-center gap-2 font-bold text-[var(--fg-primary)]">
                               <span>{list.name}</span>
                               {list.isDemoData && (
                                 <Badge tone="amber">Demo</Badge>
@@ -1057,26 +1054,26 @@ export function DashboardView({
                                 </Badge>
                               )}
                             </div>
-                            <div className="mt-0.5 font-mono text-[11px] text-[var(--fg-muted)]">
+                            <div className="mt-0.5 text-xs text-[var(--fg-secondary)]">
                               UID: <code>{list.listUid}</code>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-right font-mono font-medium tabular-nums">
+                          <td className="font-display px-4 py-3.5 text-right font-bold tabular-nums">
                             {list.syncedSubscriberCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums text-emerald-400">
+                          <td className="font-display px-4 py-3.5 text-right font-bold tabular-nums text-[var(--accent-fg)]">
                             {list.confirmedCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums text-[var(--fg-secondary)]">
+                          <td className="px-4 py-3.5 text-right tabular-nums text-[var(--fg-secondary)]">
                             {list.unconfirmedCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums text-[var(--fg-secondary)]">
+                          <td className="px-4 py-3.5 text-right tabular-nums text-[var(--fg-secondary)]">
                             {list.unsubscribedCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums text-rose-400">
+                          <td className="px-4 py-3.5 text-right font-bold tabular-nums text-rose-500">
                             {list.hardBouncedCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3.5">
                             <Badge
                               dot
                               tone={
@@ -1090,13 +1087,13 @@ export function DashboardView({
                               {list.reconciliationStatus}
                             </Badge>
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3.5 text-right">
                             <Link
                               href={`/lists/${list.id}`}
-                              className="inline-flex items-center gap-1 rounded border border-[var(--border-default)] bg-[var(--bg-well)] px-2.5 py-1 font-mono text-xs font-medium text-[var(--fg-primary)] transition-colors hover:bg-[var(--bg-elevated)]"
+                              className="font-display inline-flex items-center gap-1 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-xs font-bold text-[var(--fg-primary)] transition-colors hover:bg-[var(--bg-elevated)]"
                             >
                               Open List
-                              <ArrowRight className="h-3 w-3" />
+                              <ArrowRight className="h-3.5 w-3.5" />
                             </Link>
                           </td>
                         </tr>
@@ -1112,8 +1109,8 @@ export function DashboardView({
           <Tabs.Content value="campaigns">
             <Card className="overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-muted)]">
+                <table className="w-full text-left text-sm">
+                  <thead className="font-display border-b border-[var(--border-subtle)] bg-[var(--bg-well)] text-xs font-bold uppercase tracking-wider text-[var(--fg-secondary)]">
                     <tr>
                       <th className="px-4 py-3">Campaign</th>
                       <th className="px-4 py-3">Sent Date</th>
@@ -1132,7 +1129,7 @@ export function DashboardView({
                       <tr>
                         <td
                           colSpan={8}
-                          className="px-4 py-8 text-center font-mono text-xs text-[var(--fg-muted)]"
+                          className="px-4 py-8 text-center text-sm text-[var(--fg-secondary)]"
                         >
                           No campaigns found in selected period.
                         </td>
@@ -1143,41 +1140,41 @@ export function DashboardView({
                           key={camp.id}
                           className="transition-colors hover:bg-[var(--bg-well)]"
                         >
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 font-medium text-[var(--fg-primary)]">
+                          <td className="px-4 py-3.5">
+                            <div className="font-display flex items-center gap-2 font-bold text-[var(--fg-primary)]">
                               <span>{camp.name}</span>
                               {camp.isDemoData && (
                                 <Badge tone="amber">Demo</Badge>
                               )}
                             </div>
-                            <div className="mt-0.5 font-mono text-[11px] text-[var(--fg-muted)]">
+                            <div className="mt-0.5 text-xs text-[var(--fg-secondary)]">
                               UID: <code>{camp.campaignUid}</code> • Status:{' '}
                               {camp.status}
                             </div>
                           </td>
-                          <td className="px-4 py-3 font-mono text-xs text-[var(--fg-secondary)]">
+                          <td className="px-4 py-3.5 text-xs text-[var(--fg-secondary)]">
                             {camp.sendAt
                               ? new Date(camp.sendAt).toLocaleDateString()
                               : 'Not scheduled'}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <td className="px-4 py-3.5 text-right tabular-nums">
                             {camp.deliverySuccessCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <td className="px-4 py-3.5 text-right tabular-nums">
                             {camp.uniqueOpensCount.toLocaleString()} (
                             {camp.uniqueOpensRate}%)
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <td className="px-4 py-3.5 text-right tabular-nums">
                             {camp.uniqueClicksCount.toLocaleString()} (
                             {camp.uniqueClicksRate}%)
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums text-rose-400">
+                          <td className="px-4 py-3.5 text-right font-bold tabular-nums text-rose-500">
                             {camp.hardBouncesCount} / {camp.softBouncesCount}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <td className="px-4 py-3.5 text-right tabular-nums">
                             {camp.complaintsCount}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3.5">
                             <Badge
                               dot
                               tone={
@@ -1201,8 +1198,8 @@ export function DashboardView({
           {/* Capability Matrix Tab */}
           <Tabs.Content value="capabilities">
             <Card className="overflow-hidden">
-              <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-3">
-                <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
+              <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-5 py-3.5">
+                <h3 className="font-display text-base font-bold text-[var(--fg-primary)]">
                   MailWizz 3.0.5 API &amp; Historical Engagement Capability
                   Matrix
                 </h3>
@@ -1214,8 +1211,8 @@ export function DashboardView({
                 </p>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-muted)]">
+                <table className="w-full text-left text-sm">
+                  <thead className="font-display border-b border-[var(--border-subtle)] bg-[var(--bg-card)] text-xs font-bold uppercase tracking-wider text-[var(--fg-secondary)]">
                     <tr>
                       <th className="px-4 py-3">Category</th>
                       <th className="px-4 py-3">Endpoint / Feature</th>
@@ -1231,13 +1228,13 @@ export function DashboardView({
                         key={cap.id}
                         className="transition-colors hover:bg-[var(--bg-well)]"
                       >
-                        <td className="px-4 py-3 font-medium text-[var(--fg-primary)]">
+                        <td className="font-display px-4 py-3.5 font-bold text-[var(--fg-primary)]">
                           {cap.category}
                         </td>
-                        <td className="px-4 py-3 font-mono text-xs text-[var(--fg-secondary)]">
+                        <td className="px-4 py-3.5 font-mono text-xs text-[var(--fg-secondary)]">
                           {cap.endpointOrFeature}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3.5">
                           <Badge
                             dot
                             tone={
@@ -1251,7 +1248,7 @@ export function DashboardView({
                             {cap.status}
                           </Badge>
                         </td>
-                        <td className="px-4 py-3 text-xs text-[var(--fg-secondary)]">
+                        <td className="px-4 py-3.5 text-xs leading-relaxed text-[var(--fg-secondary)]">
                           {cap.notes}
                         </td>
                       </tr>
@@ -1264,11 +1261,11 @@ export function DashboardView({
 
           {/* Jobs & Audit Tab */}
           <Tabs.Content value="jobs" className="space-y-4">
-            <Card className="p-4">
+            <Card className="p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
-                    <Lock className="h-3.5 w-3.5 text-emerald-400" />
+                  <h3 className="font-display flex items-center gap-2 text-base font-bold text-[var(--fg-primary)]">
+                    <Lock className="h-4 w-4 text-[var(--accent-fg)]" />
                     Phase 2 Mutation Gate Status
                   </h3>
                   <p className="mt-0.5 text-xs text-[var(--fg-secondary)]">
@@ -1285,30 +1282,30 @@ export function DashboardView({
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card className="overflow-hidden">
-                <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-secondary)]">
+                <div className="font-display border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-5 py-3 text-sm font-bold text-[var(--fg-primary)]">
                   Recent Background Worker Jobs
                 </div>
                 <div className="divide-y divide-[var(--border-subtle)]">
                   {data.recentJobs.length === 0 ? (
-                    <div className="p-4 font-mono text-xs text-[var(--fg-muted)]">
+                    <div className="p-5 text-xs text-[var(--fg-secondary)]">
                       No background jobs queued yet.
                     </div>
                   ) : (
                     data.recentJobs.map((job) => (
                       <div
                         key={job.id}
-                        className="flex items-center justify-between px-4 py-3 text-xs"
+                        className="flex items-center justify-between px-5 py-3.5 text-xs"
                       >
                         <div>
-                          <div className="font-mono font-medium text-[var(--fg-primary)]">
+                          <div className="font-display font-bold text-[var(--fg-primary)]">
                             {job.type}
                           </div>
-                          <div className="text-[var(--fg-muted)]">
+                          <div className="mt-0.5 text-[var(--fg-secondary)]">
                             {job.progressMessage ?? 'Pending'} (
                             {job.progressCurrent}/{job.progressTotal})
                           </div>
                           {job.lastError && (
-                            <div className="mt-0.5 text-rose-400">
+                            <div className="mt-0.5 text-rose-500">
                               {job.lastError}
                             </div>
                           )}
@@ -1334,28 +1331,28 @@ export function DashboardView({
               </Card>
 
               <Card className="overflow-hidden">
-                <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-secondary)]">
+                <div className="font-display border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-5 py-3 text-sm font-bold text-[var(--fg-primary)]">
                   Administrative Audit Log (PII-Redacted)
                 </div>
                 <div className="divide-y divide-[var(--border-subtle)]">
                   {auditLogs.length === 0 ? (
-                    <div className="p-4 font-mono text-xs text-[var(--fg-muted)]">
+                    <div className="p-5 text-xs text-[var(--fg-secondary)]">
                       No audit entries yet.
                     </div>
                   ) : (
                     auditLogs.slice(0, 10).map((log) => (
                       <div
                         key={log.id}
-                        className="flex items-center justify-between px-4 py-2.5 text-xs"
+                        className="flex items-center justify-between px-5 py-3 text-xs"
                       >
                         <div>
-                          <div className="font-mono font-medium text-[var(--fg-primary)]">
+                          <div className="font-display font-bold text-[var(--fg-primary)]">
                             {log.action}{' '}
-                            <span className="font-normal text-[var(--fg-muted)]">
+                            <span className="font-normal text-[var(--fg-secondary)]">
                               ({log.resourceType})
                             </span>
                           </div>
-                          <div className="font-mono text-[11px] text-[var(--fg-muted)]">
+                          <div className="mt-0.5 text-[var(--fg-secondary)]">
                             {log.actorEmail} •{' '}
                             {new Date(log.createdAt).toLocaleString()}
                           </div>

@@ -297,15 +297,15 @@ export function CompatibilityView({
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200/80 pb-5">
           <div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
-                <GitCompareArrows className="h-3 w-3" />
-                PROTOCOL_CONTRACT_VERIFICATION
+              <span className="font-display inline-flex items-center gap-1.5 rounded-md border border-[var(--accent-border)] bg-[var(--accent-bg)] px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-[var(--accent-fg)]">
+                <GitCompareArrows className="h-3.5 w-3.5" />
+                Protocol &amp; Contract Verification
               </span>
             </div>
-            <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900">
+            <h1 className="font-display mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
               MailWizz Future-Version Compatibility &amp; Adapter Verification
             </h1>
-            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
+            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
               Detects MailWizz version drift passively from official read-only
               responses, validates data contracts without mutating remote
               subscribers, and enforces fail-closed mutation guards whenever an

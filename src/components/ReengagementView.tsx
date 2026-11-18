@@ -157,15 +157,15 @@ export function ReengagementView({
       <div className="space-y-6">
         <div className="border-b border-slate-200/80 pb-5">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
-              <MailCheck className="h-3 w-3" />
-              PERMISSION_PASS_ORCHESTRATION
+            <span className="font-display inline-flex items-center gap-1.5 rounded-md border border-[var(--accent-border)] bg-[var(--accent-bg)] px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-[var(--accent-fg)]">
+              <MailCheck className="h-3.5 w-3.5" />
+              Permission-Pass Orchestration
             </span>
           </div>
-          <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900">
+          <h1 className="font-display mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
             Re-Engagement Workflow (Manual Campaign Approval)
           </h1>
-          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
             Identify qualifying inactive contacts while excluding unsubscribed,
             complained, bounced, and VIP contacts. Draft permission-pass
             messaging, record manual MailWizz campaign approval, and evaluate
