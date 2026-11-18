@@ -73,8 +73,11 @@ export function ReportsView({
       format: 'csv',
       mask: String(maskPii),
     });
-    if (selectedConnectionId)
-      params.set('customerConnectionId', selectedConnectionId);
+    const effectiveConnId =
+      selectedConnectionId ||
+      (connections.length > 1 ? (connections[0]?.id ?? '') : '');
+    if (effectiveConnId)
+      params.set('customerConnectionId', effectiveConnId);
     if (selectedListId) params.set('mailingListId', selectedListId);
     return `/api/reports/hygiene?${params.toString()}`;
   }
@@ -90,12 +93,12 @@ export function ReportsView({
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200/80 pb-5">
           <div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
-                <BarChart3 className="h-3 w-3 text-indigo-400" />
-                Audience Intelligence &amp; Exports
+              <span className="inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+                <BarChart3 className="h-3 w-3" />
+                AUDIENCE_INTELLIGENCE_EXPORTS
               </span>
             </div>
-            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
+            <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900">
               Hygiene &amp; Deliverability Reports
             </h1>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">

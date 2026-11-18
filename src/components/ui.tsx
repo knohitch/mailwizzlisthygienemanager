@@ -16,7 +16,7 @@ export function Card({
     <div
       {...props}
       className={cn(
-        'rounded-xl border border-slate-200/90 bg-white shadow-2xs transition-colors',
+        'rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] transition-colors',
         className
       )}
     >
@@ -35,23 +35,25 @@ export type BadgeTone =
   | 'sky';
 
 const BADGE_STYLES: Record<BadgeTone, string> = {
-  slate: 'bg-slate-100/90 text-slate-700 border-slate-200/90',
-  emerald: 'bg-emerald-50/90 text-emerald-800 border-emerald-200/80',
-  teal: 'bg-teal-50/90 text-teal-800 border-teal-200/80',
-  amber: 'bg-amber-50/90 text-amber-800 border-amber-200/80',
-  rose: 'bg-rose-50/90 text-rose-800 border-rose-200/80',
-  indigo: 'bg-indigo-50/90 text-indigo-800 border-indigo-200/80',
-  sky: 'bg-sky-50/90 text-sky-800 border-sky-200/80',
+  slate:
+    'bg-[var(--bg-elevated)] text-[var(--fg-secondary)] border-[var(--border-default)]',
+  emerald: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  teal: 'bg-teal-50 text-teal-800 border-teal-200',
+  amber: 'bg-amber-50 text-amber-800 border-amber-200',
+  rose: 'bg-rose-50 text-rose-800 border-rose-200',
+  indigo:
+    'bg-[var(--bg-elevated)] text-[var(--fg-primary)] border-[var(--border-strong)]',
+  sky: 'bg-sky-50 text-sky-800 border-sky-200',
 };
 
 const DOT_STYLES: Record<BadgeTone, string> = {
   slate: 'bg-slate-400',
-  emerald: 'bg-emerald-500',
-  teal: 'bg-teal-500',
-  amber: 'bg-amber-500',
-  rose: 'bg-rose-500',
-  indigo: 'bg-indigo-500',
-  sky: 'bg-sky-500',
+  emerald: 'bg-emerald-400',
+  teal: 'bg-teal-400',
+  amber: 'bg-amber-400',
+  rose: 'bg-rose-400',
+  indigo: 'bg-slate-200',
+  sky: 'bg-sky-400',
 };
 
 export function StatusDot({
@@ -67,7 +69,7 @@ export function StatusDot({
     <span
       aria-hidden="true"
       className={cn(
-        'inline-block h-2 w-2 shrink-0 rounded-full',
+        'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
         DOT_STYLES[tone],
         pulse && 'animate-pulse',
         className
@@ -90,12 +92,12 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium leading-5 tracking-tight',
+        'inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-[11px] font-medium leading-4 tracking-tight',
         BADGE_STYLES[tone],
         className
       )}
     >
-      {dot && <StatusDot tone={tone} className="h-1.5 w-1.5" />}
+      {dot && <StatusDot tone={tone} />}
       {children}
     </span>
   );
@@ -111,7 +113,7 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        'border-b border-slate-100 bg-slate-50/40 px-5 py-3.5',
+        'border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-3',
         className
       )}
     >
@@ -130,7 +132,7 @@ export function CardTitle({
   return (
     <h2
       className={cn(
-        'text-sm font-semibold tracking-tight text-slate-900',
+        'text-xs font-semibold uppercase tracking-wider text-[var(--fg-primary)]',
         className
       )}
     >
@@ -147,7 +149,7 @@ export function CardDescription({
   children: React.ReactNode;
 }) {
   return (
-    <p className={cn('mt-0.5 text-xs text-slate-500', className)}>
+    <p className={cn('mt-0.5 text-xs text-[var(--fg-muted)]', className)}>
       {children}
     </p>
   );
@@ -160,7 +162,7 @@ export function CardContent({
   className?: string;
   children: React.ReactNode;
 }) {
-  return <div className={cn('p-5', className)}>{children}</div>;
+  return <div className={cn('p-4', className)}>{children}</div>;
 }
 
 export function Button({
@@ -174,25 +176,25 @@ export function Button({
 }) {
   const variants = {
     primary:
-      'bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-400 border border-slate-900/10 shadow-2xs',
+      'bg-[var(--fg-primary)] text-[var(--bg-canvas)] hover:opacity-90 border border-transparent disabled:opacity-35',
     secondary:
-      'bg-indigo-600 text-white hover:bg-indigo-500 disabled:bg-indigo-300 border border-indigo-600/20 shadow-2xs',
+      'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-35',
     outline:
-      'bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 border border-slate-300/90 disabled:opacity-50 shadow-2xs',
+      'bg-[var(--bg-well)] text-[var(--fg-primary)] hover:bg-[var(--bg-elevated)] border border-[var(--border-default)] disabled:opacity-35',
     danger:
-      'bg-rose-600 text-white hover:bg-rose-500 disabled:bg-rose-300 border border-rose-600/20 shadow-2xs',
+      'bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 disabled:opacity-35',
     ghost:
-      'bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent disabled:opacity-50',
+      'bg-transparent text-[var(--fg-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg-primary)] border border-transparent disabled:opacity-35',
   };
   const sizes = {
     sm: 'px-2.5 py-1.5 text-xs',
-    md: 'px-3.5 py-2 text-sm',
+    md: 'px-3.5 py-2 text-xs',
   };
   return (
     <button
       {...props}
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed',
+        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium tracking-tight transition-all focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--fg-secondary)] disabled:cursor-not-allowed',
         variants[variant],
         sizes[size],
         className
@@ -273,24 +275,30 @@ export function AgentWorkflowStrip({
     <div
       aria-label="Agent operational workflow pipeline"
       className={cn(
-        'rounded-xl border border-slate-200/90 bg-white px-4 py-3 shadow-2xs',
+        'overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)]',
         className
       )}
     >
-      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-3.5 py-2">
         <div className="flex items-center gap-2">
-          <StatusDot tone="indigo" pulse />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Autonomous Hygiene Agent Pipeline
+          <StatusDot tone="emerald" pulse />
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-secondary)]">
+            AGENT_LOOP // DETERMINISTIC HYGIENE PIPELINE
           </span>
         </div>
-        <span className="font-mono text-[11px] text-slate-500">
-          {phase1ReadOnly
-            ? 'Remote Mutation Lock: ACTIVE (Read-Only / Dry-Run Mode)'
-            : 'Remote Mutation Lock: GUARDED'}
-        </span>
+        <div className="flex items-center gap-3 font-mono text-[11px] text-[var(--fg-muted)]">
+          <span>
+            GATE:{' '}
+            <strong className="text-emerald-400">
+              {phase1ReadOnly ? 'READ_ONLY_LOCK' : 'GUARDED_MUTATION'}
+            </strong>
+          </span>
+          <span className="hidden sm:inline">•</span>
+          <span className="hidden sm:inline">SNAPSHOT: AES-256-GCM</span>
+        </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+
+      <div className="grid grid-cols-2 divide-x divide-y divide-[var(--border-subtle)] sm:grid-cols-3 lg:grid-cols-6 lg:divide-y-0">
         {AGENT_STAGES.map((stage) => {
           const isActive = stage.id === activeStage;
           return (
@@ -298,29 +306,32 @@ export function AgentWorkflowStrip({
               key={stage.id}
               href={stage.href}
               className={cn(
-                'group flex flex-col justify-between rounded-lg border px-3 py-2 text-left transition-colors',
+                'group relative flex flex-col justify-between px-3.5 py-2.5 text-left transition-colors',
                 isActive
-                  ? 'border-indigo-500/40 bg-indigo-50/60 text-slate-900'
-                  : 'border-slate-200/70 bg-slate-50/40 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  ? 'bg-[var(--bg-elevated)] text-[var(--fg-primary)]'
+                  : 'bg-[var(--bg-card)] text-[var(--fg-secondary)] hover:bg-[var(--bg-well)] hover:text-[var(--fg-primary)]'
               )}
             >
+              {isActive && (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-0 top-0 h-0.5 bg-emerald-400"
+                />
+              )}
               <div className="flex items-center justify-between gap-1.5">
                 <span
                   className={cn(
-                    'font-mono text-[10px] font-semibold uppercase tracking-wider',
-                    isActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600'
+                    'font-mono text-[10px] uppercase tracking-wider',
+                    isActive
+                      ? 'font-semibold text-emerald-400'
+                      : 'text-[var(--fg-muted)]'
                   )}
                 >
-                  Stage {stage.step}
+                  [{stage.step}] {stage.label}
                 </span>
-                {isActive && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
-                )}
+                {isActive && <StatusDot tone="emerald" pulse />}
               </div>
-              <div className="mt-0.5 text-xs font-semibold text-slate-900">
-                {stage.label}
-              </div>
-              <div className="text-[11px] text-slate-500 truncate">
+              <div className="mt-1 truncate text-[11px] text-[var(--fg-muted)]">
                 {stage.summary}
               </div>
             </Link>

@@ -446,12 +446,12 @@ export function DeliverabilityView({
         <div className="flex flex-col justify-between gap-4 border-b border-slate-200/80 pb-5 md:flex-row md:items-center">
           <div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
-                <Globe className="h-3 w-3 text-indigo-400" />
-                Deliverability &amp; DNS Intelligence
+              <span className="inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+                <Globe className="h-3 w-3" />
+                DELIVERABILITY_DNS_INTELLIGENCE
               </span>
             </div>
-            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
+            <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900">
               Email Deliverability Diagnostics
             </h1>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">

@@ -252,12 +252,12 @@ export function SettingsView({
       <div className="space-y-6">
         <div className="border-b border-slate-200/80 pb-5">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
-              <Settings className="h-3 w-3 text-indigo-400" />
-              System Policy &amp; Data Sources
+            <span className="inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+              <Settings className="h-3 w-3" />
+              SYSTEM_POLICY_DATA_SOURCES
             </span>
           </div>
-          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900">
             Configuration, Credentials &amp; Engagement Sources
           </h1>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">

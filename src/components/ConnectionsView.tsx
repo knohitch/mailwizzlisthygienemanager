@@ -157,6 +157,7 @@ export function ConnectionsView({
   const [deleteConfirmPhrase, setDeleteConfirmPhrase] = useState('');
 
   const [sampleData, setSampleData] = useState<SampleResponse | null>(null);
+  const refreshSeqRef = React.useRef(0);
 
   async function refreshList(
     nextPage = page,
@@ -164,6 +165,7 @@ export function ConnectionsView({
     nextStatus = statusFilter,
     nextInstallation = installationFilter
   ) {
+    const seq = ++refreshSeqRef.current;
     setLoading(true);
     try {
       const sp = new URLSearchParams({
@@ -175,13 +177,15 @@ export function ConnectionsView({
       if (nextInstallation) sp.set('installationId', nextInstallation);
 
       const res = await fetch(`/api/connections?${sp.toString()}`);
-      if (res.ok) {
+      if (res.ok && seq === refreshSeqRef.current) {
         const json = (await res.json()) as ConnectionsListResponse;
         setData(json);
         setPage(json.page);
       }
     } finally {
-      setLoading(false);
+      if (seq === refreshSeqRef.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -449,12 +453,12 @@ export function ConnectionsView({
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200/80 pb-5">
           <div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
-                <PlugZap className="h-3 w-3 text-indigo-400" />
-                Multi-Tenant API Governance
+              <span className="inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+                <PlugZap className="h-3 w-3" />
+                MULTI_TENANT_API_GOVERNANCE
               </span>
             </div>
-            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
+            <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900">
               MailWizz Customer API Connections
             </h1>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">

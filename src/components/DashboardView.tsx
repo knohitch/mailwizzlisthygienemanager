@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
-  Activity,
   AlertTriangle,
   ArrowRight,
   BarChart3,
@@ -21,6 +20,7 @@ import {
   RefreshCw,
   ShieldAlert,
   Sparkles,
+  Terminal,
   Users,
   XCircle,
 } from 'lucide-react';
@@ -167,7 +167,7 @@ interface AuditEntry {
   createdAt: string;
 }
 
-function KpiCard({
+function TelemetryCell({
   label,
   value,
   subtext,
@@ -181,25 +181,25 @@ function KpiCard({
   icon?: React.ReactNode;
 }) {
   return (
-    <Card className="p-4">
+    <div className="flex flex-col justify-between bg-[var(--bg-card)] p-4 transition-colors hover:bg-[var(--bg-well)]">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <StatusDot tone={tone} className="h-2 w-2" />
-          <div className="truncate text-xs font-medium text-slate-600">
+        <div className="flex min-w-0 items-center gap-2">
+          <StatusDot tone={tone} />
+          <div className="truncate font-mono text-[11px] font-medium text-[var(--fg-secondary)]">
             {label}
           </div>
         </div>
-        {icon && <div className="shrink-0 text-slate-400">{icon}</div>}
+        {icon && <div className="shrink-0 text-[var(--fg-muted)]">{icon}</div>}
       </div>
-      <div className="mt-2 text-2xl font-semibold tracking-tight tabular-nums text-slate-900">
+      <div className="mt-2.5 font-mono text-2xl font-semibold tracking-tight tabular-nums text-[var(--fg-primary)]">
         {typeof value === 'number' ? value.toLocaleString() : value}
       </div>
       {subtext && (
-        <div className="mt-1 text-[11px] leading-snug text-slate-500">
+        <div className="mt-1 text-[11px] leading-snug text-[var(--fg-muted)]">
           {subtext}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -365,29 +365,29 @@ export function DashboardView({
       isDemoMode={data.isDemoMode}
       phase1ReadOnly={data.phase1ReadOnly}
     >
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Top Command Header & Scope Controls */}
-        <div className="flex flex-col justify-between gap-4 border-b border-slate-200/80 pb-5 lg:flex-row lg:items-center">
+        <div className="flex flex-col justify-between gap-4 border-b border-[var(--border-subtle)] pb-4 lg:flex-row lg:items-center">
           <div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
-                <Activity className="h-3 w-3 text-indigo-400" />
-                Agent Command Center
+              <span className="inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+                <Terminal className="h-3 w-3" />
+                AGENT_COMMAND_CENTER
               </span>
-              <span className="text-xs text-slate-500">
-                Timezone: <strong className="text-slate-700">{data.timezone}</strong>
+              <span className="font-mono text-[11px] text-[var(--fg-muted)]">
+                TZ: <strong className="text-[var(--fg-secondary)]">{data.timezone}</strong>
               </span>
             </div>
-            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
+            <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-[var(--fg-primary)]">
               Deliverability &amp; List Hygiene Overview
             </h1>
-            <p className="mt-0.5 text-xs text-slate-600">
-              Engagement lookback window:{' '}
-              <span className="font-semibold text-slate-800">
-                {data.lookbackDays} days
+            <p className="mt-0.5 font-mono text-[11px] text-[var(--fg-muted)]">
+              LOOKBACK:{' '}
+              <span className="text-[var(--fg-secondary)]">
+                {data.lookbackDays}d
               </span>{' '}
-              • Minimum delivered campaigns before inactive classification:{' '}
-              <span className="font-semibold text-slate-800">
+              • MIN_DELIVERED_CAMPAIGNS:{' '}
+              <span className="text-[var(--fg-secondary)]">
                 {data.minDeliveredCampaigns}
               </span>
             </p>
@@ -405,7 +405,7 @@ export function DashboardView({
                   setSelectedListId('');
                   void refresh(periodDays, '', next);
                 }}
-                className="rounded-lg border border-slate-300/90 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 shadow-2xs focus:border-indigo-600 focus:outline-none"
+                className="rounded-md border border-[var(--border-default)] bg-[var(--bg-well)] px-2.5 py-1.5 font-mono text-xs text-[var(--fg-primary)]"
               >
                 <option value="">
                   Global Overview (All {data.customerAccounts?.length ?? 0}{' '}
@@ -427,7 +427,7 @@ export function DashboardView({
                 setPeriodDays(next);
                 void refresh(next, selectedListId, selectedConnectionId);
               }}
-              className="rounded-lg border border-slate-300/90 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs focus:border-indigo-600 focus:outline-none"
+              className="rounded-md border border-[var(--border-default)] bg-[var(--bg-well)] px-2.5 py-1.5 font-mono text-xs text-[var(--fg-primary)]"
             >
               <option value={30}>Last 30 days</option>
               <option value={60}>Last 60 days</option>
@@ -444,7 +444,7 @@ export function DashboardView({
                 setSelectedListId(next);
                 void refresh(periodDays, next, selectedConnectionId);
               }}
-              className="rounded-lg border border-slate-300/90 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs focus:border-indigo-600 focus:outline-none"
+              className="rounded-md border border-[var(--border-default)] bg-[var(--bg-well)] px-2.5 py-1.5 font-mono text-xs text-[var(--fg-primary)]"
             >
               <option value="">All Mailing Lists ({data.lists.length})</option>
               {data.lists.map((l) => (
@@ -460,7 +460,7 @@ export function DashboardView({
               onClick={() => triggerSyncAction('ANALYZE_HYGIENE')}
               disabled={loading}
             >
-              <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+              <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
               Re-Analyze
             </Button>
 
@@ -483,11 +483,18 @@ export function DashboardView({
 
             <a
               href={`/api/exports/subscribers?format=csv&encrypted=true${
-                selectedConnectionId
-                  ? `&customerConnectionId=${encodeURIComponent(selectedConnectionId)}`
+                selectedConnectionId ||
+                ((data.customerAccounts?.length ?? 0) > 1
+                  ? data.customerAccounts?.[0]?.id
+                  : '')
+                  ? `&customerConnectionId=${encodeURIComponent(
+                      selectedConnectionId ||
+                        data.customerAccounts?.[0]?.id ||
+                        ''
+                    )}`
                   : ''
               }${selectedListId ? `&listId=${encodeURIComponent(selectedListId)}` : ''}`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300/90 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs transition-colors hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--bg-well)] px-2.5 py-1.5 text-xs font-medium text-[var(--fg-primary)] transition-colors hover:bg-[var(--bg-elevated)]"
             >
               <Download className="h-3.5 w-3.5" />
               Encrypted Export
@@ -503,22 +510,24 @@ export function DashboardView({
 
         {/* Connection / Action Alerts */}
         {!data.connectionConfigured && (
-          <Card className="border-slate-300 bg-slate-50/90 p-4">
+          <Card className="border-[var(--border-default)] bg-[var(--bg-card)] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600/10 text-indigo-600">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-amber-500/30 bg-amber-500/10 text-amber-400">
                   <Database className="h-4 w-4" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-900">
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
                     Live MailWizz 3.0.5 Connection Not Configured Yet
                   </h2>
-                  <p className="text-xs text-slate-600">
-                    No live MailWizz instance is accessed until you provide your API URL and{' '}
-                    <code className="rounded bg-white px-1 py-0.5 text-[11px]">
+                  <p className="mt-0.5 text-xs text-[var(--fg-secondary)]">
+                    No live MailWizz instance is accessed until you provide your
+                    API URL and{' '}
+                    <code className="rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-1 py-0.5 font-mono text-[11px] text-[var(--fg-primary)]">
                       X-Api-Key
                     </code>{' '}
-                    in Customer Connections or Settings. You can evaluate the full agent pipeline using synthetic demo fixtures.
+                    in Customer Connections or Settings. You can evaluate the
+                    full agent pipeline using synthetic demo fixtures.
                   </p>
                 </div>
               </div>
@@ -530,7 +539,7 @@ export function DashboardView({
                     onClick={() => triggerSyncAction('SEED_DEMO_DATA')}
                     disabled={loading}
                   >
-                    <FlaskConical className="h-3.5 w-3.5" />
+                    <FlaskConical className="h-3.5 w-3.5 text-amber-400" />
                     Load Synthetic Demo Data
                   </Button>
                 ) : (
@@ -545,7 +554,7 @@ export function DashboardView({
                 )}
                 <Link
                   href="/settings"
-                  className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                  className="inline-flex items-center gap-1 rounded-md bg-[var(--fg-primary)] px-3 py-1.5 text-xs font-medium text-[var(--bg-canvas)] hover:opacity-90"
                 >
                   Configure MailWizz
                   <ArrowRight className="h-3.5 w-3.5" />
@@ -558,7 +567,7 @@ export function DashboardView({
         {bannerMsg && (
           <div
             role="status"
-            className={`rounded-lg border px-4 py-2.5 text-xs font-medium ${
+            className={`rounded-md border px-4 py-2.5 text-xs font-medium ${
               bannerMsg.type === 'ok'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
                 : 'border-rose-200 bg-rose-50 text-rose-900'
@@ -574,14 +583,14 @@ export function DashboardView({
             aria-label="Customer accounts overview"
             data-testid="customer-accounts-overview"
           >
-            <Card className="p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+            <Card className="overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <StatusDot tone="emerald" />
-                  <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+                  <h2 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-secondary)]">
                     {selectedConnectionId
-                      ? 'Active Customer Account Scope'
-                      : `Connected Customer Accounts (${data.customerAccounts?.length ?? 0})`}
+                      ? 'ACTIVE_CUSTOMER_SCOPE'
+                      : `CONNECTED_CUSTOMER_ACCOUNTS (${data.customerAccounts?.length ?? 0})`}
                   </h2>
                   {selectedConnectionId && (
                     <button
@@ -591,33 +600,33 @@ export function DashboardView({
                         setSelectedListId('');
                         void refresh(periodDays, '', '');
                       }}
-                      className="text-xs font-medium text-indigo-600 hover:underline"
+                      className="font-mono text-[11px] font-medium text-emerald-400 hover:underline"
                     >
-                      Show All Customers
+                      [Show All Customers]
                     </button>
                   )}
                 </div>
                 <Link
                   href="/connections"
-                  className="text-xs font-medium text-indigo-600 hover:underline"
+                  className="font-mono text-[11px] font-medium text-[var(--fg-primary)] hover:underline"
                 >
                   Manage Customer Connections &rarr;
                 </Link>
               </div>
-              <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 lg:grid-cols-3">
                 {data.customerAccounts?.map((acct) => {
                   const active = selectedConnectionId === acct.id;
                   return (
                     <div
                       key={acct.id}
-                      className={`rounded-lg border p-3 text-xs transition-colors ${
+                      className={`rounded-md border p-3.5 text-xs transition-colors ${
                         active
-                          ? 'border-indigo-500/50 bg-indigo-50/40'
-                          : 'border-slate-200/80 bg-slate-50/40 hover:border-slate-300'
+                          ? 'border-emerald-500/40 bg-[var(--bg-elevated)]'
+                          : 'border-[var(--border-default)] bg-[var(--bg-well)] hover:border-[var(--border-strong)]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="truncate font-semibold text-slate-900">
+                        <div className="truncate font-semibold text-[var(--fg-primary)]">
                           {acct.customerName}
                         </div>
                         <Badge
@@ -636,21 +645,27 @@ export function DashboardView({
                           {acct.isQuarantine ? 'QUARANTINED' : acct.status}
                         </Badge>
                       </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[11px] text-slate-500">
-                        <span className="font-mono">{acct.hostname}</span>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 font-mono text-[11px] text-[var(--fg-muted)]">
+                        <span>{acct.hostname}</span>
                         <span>
-                          Key: <code>{acct.apiKeyMasked ?? 'none'}</code>
+                          KEY:{' '}
+                          <code className="rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-[var(--fg-secondary)]">
+                            {acct.apiKeyMasked ?? 'none'}
+                          </code>
                         </span>
                         {acct.isPaused && (
-                          <span className="font-medium text-amber-700">
-                            Paused
+                          <span className="font-medium text-amber-400">
+                            PAUSED
                           </span>
                         )}
                       </div>
-                      <div className="mt-2.5 flex items-center justify-between border-t border-slate-200/60 pt-2 text-[11px] text-slate-600">
+                      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-subtle)] pt-2.5 font-mono text-[11px] text-[var(--fg-secondary)]">
                         <span className="tabular-nums">
-                          <strong>{acct.listsCount}</strong> lists •{' '}
-                          <strong>
+                          <strong className="text-[var(--fg-primary)]">
+                            {acct.listsCount}
+                          </strong>{' '}
+                          lists •{' '}
+                          <strong className="text-[var(--fg-primary)]">
                             {acct.subscribersCount.toLocaleString()}
                           </strong>{' '}
                           subscribers
@@ -662,7 +677,7 @@ export function DashboardView({
                             setSelectedListId('');
                             void refresh(periodDays, '', acct.id);
                           }}
-                          className="font-semibold text-indigo-600 hover:underline"
+                          className="font-semibold text-emerald-400 hover:underline"
                         >
                           {active ? 'Active Scope' : 'Inspect Account'}
                         </button>
@@ -675,140 +690,144 @@ export function DashboardView({
           </section>
         )}
 
-        {/* B. Subscriber Intelligence & Proportional Distribution Bar */}
-        <section aria-label="Subscriber and hygiene KPIs" className="space-y-3">
-          <Card className="p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="font-semibold text-slate-800">
-                Audience Hygiene Distribution ({k.totalSubscribers.toLocaleString()}{' '}
-                Total Subscribers)
+        {/* B. Unified Subscriber Intelligence Telemetry Matrix */}
+        <section aria-label="Subscriber and hygiene KPIs">
+          <Card className="overflow-hidden">
+            {/* Matrix Header + Distribution Bar */}
+            <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
+                  SUBSCRIBER_INTELLIGENCE // AUDIENCE_HYGIENE_MATRIX (
+                  {k.totalSubscribers.toLocaleString()} TOTAL)
+                </div>
+                <div className="flex flex-wrap items-center gap-4 font-mono text-[11px] text-[var(--fg-secondary)]">
+                  <span className="flex items-center gap-1.5">
+                    <StatusDot tone="emerald" />
+                    Strong ({strongPct}%)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <StatusDot tone="teal" />
+                    Open-Only ({openOnlyPct}%)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <StatusDot tone="amber" />
+                    Inactive ({inactivePct}%)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <StatusDot tone="sky" />
+                    Insufficient/Unknown ({insufficientPct}%)
+                  </span>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-600">
-                <span className="flex items-center gap-1.5">
-                  <StatusDot tone="emerald" />
-                  Strong ({strongPct}%)
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <StatusDot tone="teal" />
-                  Open-Only ({openOnlyPct}%)
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <StatusDot tone="amber" />
-                  Inactive Candidate ({inactivePct}%)
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <StatusDot tone="sky" />
-                  Insufficient / Unknown ({insufficientPct}%)
-                </span>
+              <div className="mt-2.5 flex h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+                <div
+                  className="bg-emerald-400 transition-all"
+                  style={{ width: `${strongPct}%` }}
+                  title={`Strong Engagement: ${k.engagedStrong.toLocaleString()}`}
+                />
+                <div
+                  className="bg-teal-400 transition-all"
+                  style={{ width: `${openOnlyPct}%` }}
+                  title={`Open-Only Engagement: ${k.engagedOpenOnly.toLocaleString()}`}
+                />
+                <div
+                  className="bg-amber-400 transition-all"
+                  style={{ width: `${inactivePct}%` }}
+                  title={`Potentially Inactive: ${k.potentiallyInactiveSubscribers.toLocaleString()}`}
+                />
+                <div
+                  className="bg-sky-400 transition-all"
+                  style={{ width: `${insufficientPct}%` }}
+                  title="Insufficient / Unknown History"
+                />
               </div>
             </div>
-            <div className="mt-2.5 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="bg-emerald-500 transition-all"
-                style={{ width: `${strongPct}%` }}
-                title={`Strong Engagement: ${k.engagedStrong.toLocaleString()}`}
+
+            {/* Unified 12-Cell Hairline Telemetry Grid */}
+            <div className="grid grid-cols-1 divide-x divide-y divide-[var(--border-subtle)] sm:grid-cols-2 lg:grid-cols-4">
+              <TelemetryCell
+                label="Total MailWizz Lists"
+                value={k.totalLists}
+                subtext="Auto-discovered via read-only API"
+                tone="slate"
+                icon={<Database className="h-3.5 w-3.5" />}
               />
-              <div
-                className="bg-teal-500 transition-all"
-                style={{ width: `${openOnlyPct}%` }}
-                title={`Open-Only Engagement: ${k.engagedOpenOnly.toLocaleString()}`}
+              <TelemetryCell
+                label="Total Subscribers"
+                value={k.totalSubscribers}
+                subtext={`${k.confirmedSubscribers.toLocaleString()} confirmed • ${k.unconfirmedSubscribers.toLocaleString()} unconfirmed`}
+                tone="indigo"
+                icon={<Users className="h-3.5 w-3.5" />}
               />
-              <div
-                className="bg-amber-500 transition-all"
-                style={{ width: `${inactivePct}%` }}
-                title={`Potentially Inactive: ${k.potentiallyInactiveSubscribers.toLocaleString()}`}
+              <TelemetryCell
+                label="Recently Engaged (Total)"
+                value={k.recentlyEngagedTotal}
+                subtext={`${k.engagedStrong.toLocaleString()} strong (clicks/replies) • ${k.engagedOpenOnly.toLocaleString()} open-only`}
+                tone="emerald"
+                icon={<CheckCircle2 className="h-3.5 w-3.5" />}
               />
-              <div
-                className="bg-sky-400 transition-all"
-                style={{ width: `${insufficientPct}%` }}
-                title={`Insufficient / Unknown History`}
+              <TelemetryCell
+                label="Potentially Inactive"
+                value={k.potentiallyInactiveSubscribers}
+                subtext={`Verified >= ${data.minDeliveredCampaigns} delivered campaigns & 0 engagement`}
+                tone="amber"
+                icon={<AlertTriangle className="h-3.5 w-3.5" />}
+              />
+
+              <TelemetryCell
+                label="Strong Engagement (Click+)"
+                value={k.engagedStrong}
+                subtext="Verified click, reply, or conversion in lookback"
+                tone="emerald"
+              />
+              <TelemetryCell
+                label="Open-Only Engagement"
+                value={k.engagedOpenOnly}
+                subtext="Tracked separately (open pixel/MPP caveat)"
+                tone="teal"
+              />
+              <TelemetryCell
+                label="Insufficient History"
+                value={k.insufficientHistorySubscribers}
+                subtext={`Fewer than ${data.minDeliveredCampaigns} delivered campaigns`}
+                tone="sky"
+              />
+              <TelemetryCell
+                label="UNKNOWN History"
+                value={k.unknownHistorySubscribers}
+                subtext="Inactivity decisions disabled (needs Priority B/C/D)"
+                tone="slate"
+                icon={<HelpCircle className="h-3.5 w-3.5" />}
+              />
+
+              <TelemetryCell
+                label="Already Unsubscribed"
+                value={k.unsubscribedSubscribers}
+                subtext={`${k.blacklistedSubscribers.toLocaleString()} blacklisted`}
+                tone="slate"
+              />
+              <TelemetryCell
+                label="Hard-Bounced Contacts"
+                value={k.hardBouncedSubscribers}
+                subtext="From MailWizz campaign bounce logs"
+                tone="rose"
+                icon={<XCircle className="h-3.5 w-3.5" />}
+              />
+              <TelemetryCell
+                label="Spam Complaints"
+                value={k.complainedSubscribers}
+                subtext={`Campaign aggregate complaints: ${k.totalComplaints}`}
+                tone="rose"
+                icon={<ShieldAlert className="h-3.5 w-3.5" />}
+              />
+              <TelemetryCell
+                label="Excluded (Protected)"
+                value={k.excludedSubscribers}
+                subtext="VIP domains, protected sources, or recent grace window"
+                tone="indigo"
               />
             </div>
           </Card>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard
-              label="Total MailWizz Lists"
-              value={k.totalLists}
-              subtext="Auto-discovered via read-only API"
-              tone="slate"
-              icon={<Database className="h-4 w-4" />}
-            />
-            <KpiCard
-              label="Total Subscribers"
-              value={k.totalSubscribers}
-              subtext={`${k.confirmedSubscribers.toLocaleString()} confirmed • ${k.unconfirmedSubscribers.toLocaleString()} unconfirmed`}
-              tone="indigo"
-              icon={<Users className="h-4 w-4" />}
-            />
-            <KpiCard
-              label="Recently Engaged (Total)"
-              value={k.recentlyEngagedTotal}
-              subtext={`${k.engagedStrong.toLocaleString()} strong (clicks/replies) • ${k.engagedOpenOnly.toLocaleString()} open-only`}
-              tone="emerald"
-              icon={<CheckCircle2 className="h-4 w-4" />}
-            />
-            <KpiCard
-              label="Potentially Inactive"
-              value={k.potentiallyInactiveSubscribers}
-              subtext={`Verified >= ${data.minDeliveredCampaigns} delivered campaigns & 0 engagement`}
-              tone="amber"
-              icon={<AlertTriangle className="h-4 w-4" />}
-            />
-
-            <KpiCard
-              label="Strong Engagement (Click+)"
-              value={k.engagedStrong}
-              subtext="Verified click, reply, or conversion in lookback"
-              tone="emerald"
-            />
-            <KpiCard
-              label="Open-Only Engagement"
-              value={k.engagedOpenOnly}
-              subtext="Tracked separately (open pixel/MPP caveat)"
-              tone="teal"
-            />
-            <KpiCard
-              label="Insufficient History"
-              value={k.insufficientHistorySubscribers}
-              subtext={`Fewer than ${data.minDeliveredCampaigns} delivered campaigns`}
-              tone="sky"
-            />
-            <KpiCard
-              label="UNKNOWN History"
-              value={k.unknownHistorySubscribers}
-              subtext="Inactivity decisions disabled (needs Priority B/C/D)"
-              tone="slate"
-              icon={<HelpCircle className="h-4 w-4" />}
-            />
-
-            <KpiCard
-              label="Already Unsubscribed"
-              value={k.unsubscribedSubscribers}
-              subtext={`${k.blacklistedSubscribers.toLocaleString()} blacklisted`}
-              tone="slate"
-            />
-            <KpiCard
-              label="Hard-Bounced Contacts"
-              value={k.hardBouncedSubscribers}
-              subtext="From MailWizz campaign bounce logs"
-              tone="rose"
-              icon={<XCircle className="h-4 w-4" />}
-            />
-            <KpiCard
-              label="Spam Complaints"
-              value={k.complainedSubscribers}
-              subtext={`Campaign aggregate complaints: ${k.totalComplaints}`}
-              tone="rose"
-              icon={<ShieldAlert className="h-4 w-4" />}
-            />
-            <KpiCard
-              label="Excluded (Protected)"
-              value={k.excludedSubscribers}
-              subtext="VIP domains, protected sources, or recent grace window"
-              tone="indigo"
-            />
-          </div>
         </section>
 
         {/* C. Campaign Delivery Telemetry & Agent Action Launchpad */}
@@ -817,60 +836,62 @@ export function DashboardView({
             aria-label="Campaign delivery and engagement metrics"
             className="lg:col-span-7"
           >
-            <Card className="h-full p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-700">
-                  <Mail className="h-3.5 w-3.5 text-slate-500" />
-                  Campaign Delivery &amp; Engagement ({periodDays}-Day Window)
+            <Card className="h-full overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5">
+                <h2 className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
+                  <Mail className="h-3.5 w-3.5 text-[var(--fg-muted)]" />
+                  CAMPAIGN_TELEMETRY ({periodDays}D_WINDOW)
                 </h2>
-                <span className="font-mono text-[11px] text-slate-500">
+                <span className="font-mono text-[11px] text-[var(--fg-muted)]">
                   GET /campaigns/&#123;uid&#125;/stats
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <div className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-3">
-                  <div className="text-[11px] text-slate-500">
+              <div className="grid grid-cols-2 divide-x divide-y divide-[var(--border-subtle)] sm:grid-cols-3">
+                <div className="p-3.5">
+                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
                     Campaigns Sent
                   </div>
-                  <div className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-[var(--fg-primary)]">
                     {k.campaignsSentInPeriod.toLocaleString()}
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-3">
-                  <div className="text-[11px] text-slate-500">
+                <div className="p-3.5">
+                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
                     Delivery Success
                   </div>
-                  <div className="mt-1 text-lg font-semibold tabular-nums text-emerald-700">
+                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-emerald-400">
                     {k.totalDeliverySuccess.toLocaleString()}
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-3">
-                  <div className="text-[11px] text-slate-500">Unique Opens</div>
-                  <div className="mt-1 text-lg font-semibold tabular-nums text-teal-700">
+                <div className="p-3.5">
+                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
+                    Unique Opens
+                  </div>
+                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-teal-400">
                     {k.totalUniqueOpens.toLocaleString()}
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-3">
-                  <div className="text-[11px] text-slate-500">
+                <div className="p-3.5">
+                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
                     Unique Clicks
                   </div>
-                  <div className="mt-1 text-lg font-semibold tabular-nums text-indigo-700">
+                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-[var(--fg-primary)]">
                     {k.totalUniqueClicks.toLocaleString()}
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-3">
-                  <div className="text-[11px] text-slate-500">
+                <div className="p-3.5">
+                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
                     Delivery Errors
                   </div>
-                  <div className="mt-1 text-lg font-semibold tabular-nums text-rose-700">
+                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-rose-400">
                     {k.totalDeliveryErrors.toLocaleString()}
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-3">
-                  <div className="text-[11px] text-slate-500">
+                <div className="p-3.5">
+                  <div className="font-mono text-[11px] text-[var(--fg-muted)]">
                     Bounces (Hard / Soft)
                   </div>
-                  <div className="mt-1 text-lg font-semibold tabular-nums text-amber-700">
+                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-amber-400">
                     {k.totalHardBounces.toLocaleString()} /{' '}
                     {k.totalSoftBounces.toLocaleString()}
                   </div>
@@ -883,26 +904,28 @@ export function DashboardView({
             aria-label="Agent action workspace shortcuts"
             className="lg:col-span-5"
           >
-            <Card className="h-full p-4">
-              <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-2.5">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
-                  Recommended Agent Operations
+            <Card className="h-full overflow-hidden">
+              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5">
+                <h2 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
+                  AGENT_DISPATCH // OPERATIONS
                 </h2>
-                <Badge tone="indigo">Guarded Workflows</Badge>
+                <Badge tone="emerald" dot>
+                  GUARDED
+                </Badge>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-1 divide-x divide-y divide-[var(--border-subtle)] sm:grid-cols-2">
                 <Link
                   href="/cleanup"
-                  className="group flex flex-col justify-between rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 transition-colors hover:border-indigo-300 hover:bg-indigo-50/30"
+                  className="group flex flex-col justify-between p-3.5 transition-colors hover:bg-[var(--bg-well)]"
                 >
                   <div className="flex items-center justify-between">
-                    <Filter className="h-4 w-4 text-indigo-600" />
-                    <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-indigo-600" />
+                    <Filter className="h-3.5 w-3.5 text-emerald-400" />
+                    <ArrowRight className="h-3.5 w-3.5 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
                   </div>
-                  <div className="mt-2 text-xs font-semibold text-slate-900">
+                  <div className="mt-2 font-mono text-xs font-semibold text-[var(--fg-primary)]">
                     Dry-Run Cleanup
                   </div>
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-[11px] text-[var(--fg-muted)]">
                     {k.potentiallyInactiveSubscribers.toLocaleString()} inactive
                     candidates
                   </div>
@@ -910,48 +933,48 @@ export function DashboardView({
 
                 <Link
                   href="/reengagement"
-                  className="group flex flex-col justify-between rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 transition-colors hover:border-indigo-300 hover:bg-indigo-50/30"
+                  className="group flex flex-col justify-between p-3.5 transition-colors hover:bg-[var(--bg-well)]"
                 >
                   <div className="flex items-center justify-between">
-                    <MailCheck className="h-4 w-4 text-indigo-600" />
-                    <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-indigo-600" />
+                    <MailCheck className="h-3.5 w-3.5 text-emerald-400" />
+                    <ArrowRight className="h-3.5 w-3.5 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
                   </div>
-                  <div className="mt-2 text-xs font-semibold text-slate-900">
+                  <div className="mt-2 font-mono text-xs font-semibold text-[var(--fg-primary)]">
                     Permission Pass
                   </div>
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-[11px] text-[var(--fg-muted)]">
                     Manual campaign approval
                   </div>
                 </Link>
 
                 <Link
                   href="/reports"
-                  className="group flex flex-col justify-between rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 transition-colors hover:border-indigo-300 hover:bg-indigo-50/30"
+                  className="group flex flex-col justify-between p-3.5 transition-colors hover:bg-[var(--bg-well)]"
                 >
                   <div className="flex items-center justify-between">
-                    <BarChart3 className="h-4 w-4 text-indigo-600" />
-                    <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-indigo-600" />
+                    <BarChart3 className="h-3.5 w-3.5 text-emerald-400" />
+                    <ArrowRight className="h-3.5 w-3.5 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
                   </div>
-                  <div className="mt-2 text-xs font-semibold text-slate-900">
+                  <div className="mt-2 font-mono text-xs font-semibold text-[var(--fg-primary)]">
                     Before/After Reports
                   </div>
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-[11px] text-[var(--fg-muted)]">
                     8 verified CSV report views
                   </div>
                 </Link>
 
                 <Link
                   href="/compatibility"
-                  className="group flex flex-col justify-between rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 transition-colors hover:border-indigo-300 hover:bg-indigo-50/30"
+                  className="group flex flex-col justify-between p-3.5 transition-colors hover:bg-[var(--bg-well)]"
                 >
                   <div className="flex items-center justify-between">
-                    <GitCompareArrows className="h-4 w-4 text-indigo-600" />
-                    <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-indigo-600" />
+                    <GitCompareArrows className="h-3.5 w-3.5 text-emerald-400" />
+                    <ArrowRight className="h-3.5 w-3.5 text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]" />
                   </div>
-                  <div className="mt-2 text-xs font-semibold text-slate-900">
+                  <div className="mt-2 font-mono text-xs font-semibold text-[var(--fg-primary)]">
                     Adapter Contracts
                   </div>
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-[11px] text-[var(--fg-muted)]">
                     15 read-only endpoint probes
                   </div>
                 </Link>
@@ -961,10 +984,10 @@ export function DashboardView({
         </div>
 
         {/* D. Detailed Operational Tabs */}
-        <Tabs.Root defaultValue="lists" className="space-y-4">
+        <Tabs.Root defaultValue="lists" className="space-y-3">
           <Tabs.List
             aria-label="Dashboard sections"
-            className="inline-flex flex-wrap gap-1 rounded-xl border border-slate-200/90 bg-white p-1 shadow-2xs"
+            className="inline-flex flex-wrap gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-well)] p-1"
           >
             {[
               { id: 'lists', label: `Mailing Lists (${data.lists.length})` },
@@ -981,7 +1004,7 @@ export function DashboardView({
               <Tabs.Trigger
                 key={tab.id}
                 value={tab.id}
-                className="rounded-lg px-3.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:text-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white"
+                className="rounded px-3 py-1.5 font-mono text-xs font-medium text-[var(--fg-secondary)] transition-colors hover:text-[var(--fg-primary)] data-[state=active]:border data-[state=active]:border-[var(--border-default)] data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-[var(--fg-primary)]"
               >
                 {tab.label}
               </Tabs.Trigger>
@@ -992,8 +1015,8 @@ export function DashboardView({
           <Tabs.Content value="lists">
             <Card className="overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-muted)]">
                     <tr>
                       <th className="px-4 py-3">List</th>
                       <th className="px-4 py-3 text-right">Total</th>
@@ -1005,12 +1028,12 @@ export function DashboardView({
                       <th className="px-4 py-3 text-right">Inspect</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200/80">
+                  <tbody className="divide-y divide-[var(--border-subtle)]">
                     {data.lists.length === 0 ? (
                       <tr>
                         <td
                           colSpan={8}
-                          className="px-4 py-8 text-center text-xs text-slate-500"
+                          className="px-4 py-8 text-center font-mono text-xs text-[var(--fg-muted)]"
                         >
                           No mailing lists synced yet. Connect MailWizz in
                           Settings or load synthetic demo data.
@@ -1020,10 +1043,10 @@ export function DashboardView({
                       data.lists.map((list) => (
                         <tr
                           key={list.id}
-                          className="transition-colors hover:bg-slate-50/70"
+                          className="transition-colors hover:bg-[var(--bg-well)]"
                         >
                           <td className="px-4 py-3">
-                            <div className="flex flex-wrap items-center gap-2 font-medium text-slate-900">
+                            <div className="flex flex-wrap items-center gap-2 font-medium text-[var(--fg-primary)]">
                               <span>{list.name}</span>
                               {list.isDemoData && (
                                 <Badge tone="amber">Demo</Badge>
@@ -1034,23 +1057,23 @@ export function DashboardView({
                                 </Badge>
                               )}
                             </div>
-                            <div className="mt-0.5 font-mono text-[11px] text-slate-500">
+                            <div className="mt-0.5 font-mono text-[11px] text-[var(--fg-muted)]">
                               UID: <code>{list.listUid}</code>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-right font-medium tabular-nums">
+                          <td className="px-4 py-3 text-right font-mono font-medium tabular-nums">
                             {list.syncedSubscriberCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-emerald-700">
+                          <td className="px-4 py-3 text-right font-mono tabular-nums text-emerald-400">
                             {list.confirmedCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                          <td className="px-4 py-3 text-right font-mono tabular-nums text-[var(--fg-secondary)]">
                             {list.unconfirmedCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                          <td className="px-4 py-3 text-right font-mono tabular-nums text-[var(--fg-secondary)]">
                             {list.unsubscribedCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-rose-700">
+                          <td className="px-4 py-3 text-right font-mono tabular-nums text-rose-400">
                             {list.hardBouncedCount.toLocaleString()}
                           </td>
                           <td className="px-4 py-3">
@@ -1070,7 +1093,7 @@ export function DashboardView({
                           <td className="px-4 py-3 text-right">
                             <Link
                               href={`/lists/${list.id}`}
-                              className="inline-flex items-center gap-1 rounded-lg border border-slate-300/90 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-2xs transition-colors hover:bg-slate-50"
+                              className="inline-flex items-center gap-1 rounded border border-[var(--border-default)] bg-[var(--bg-well)] px-2.5 py-1 font-mono text-xs font-medium text-[var(--fg-primary)] transition-colors hover:bg-[var(--bg-elevated)]"
                             >
                               Open List
                               <ArrowRight className="h-3 w-3" />
@@ -1089,8 +1112,8 @@ export function DashboardView({
           <Tabs.Content value="campaigns">
             <Card className="overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-muted)]">
                     <tr>
                       <th className="px-4 py-3">Campaign</th>
                       <th className="px-4 py-3">Sent Date</th>
@@ -1104,12 +1127,12 @@ export function DashboardView({
                       <th className="px-4 py-3">Bounce Recon</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200/80">
+                  <tbody className="divide-y divide-[var(--border-subtle)]">
                     {data.campaigns.length === 0 ? (
                       <tr>
                         <td
                           colSpan={8}
-                          className="px-4 py-8 text-center text-xs text-slate-500"
+                          className="px-4 py-8 text-center font-mono text-xs text-[var(--fg-muted)]"
                         >
                           No campaigns found in selected period.
                         </td>
@@ -1118,40 +1141,40 @@ export function DashboardView({
                       data.campaigns.map((camp) => (
                         <tr
                           key={camp.id}
-                          className="transition-colors hover:bg-slate-50/70"
+                          className="transition-colors hover:bg-[var(--bg-well)]"
                         >
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 font-medium text-slate-900">
+                            <div className="flex items-center gap-2 font-medium text-[var(--fg-primary)]">
                               <span>{camp.name}</span>
                               {camp.isDemoData && (
                                 <Badge tone="amber">Demo</Badge>
                               )}
                             </div>
-                            <div className="mt-0.5 text-xs text-slate-500">
-                              UID: <code className="font-mono">{camp.campaignUid}</code> • Status:{' '}
+                            <div className="mt-0.5 font-mono text-[11px] text-[var(--fg-muted)]">
+                              UID: <code>{camp.campaignUid}</code> • Status:{' '}
                               {camp.status}
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-xs text-slate-600">
+                          <td className="px-4 py-3 font-mono text-xs text-[var(--fg-secondary)]">
                             {camp.sendAt
                               ? new Date(camp.sendAt).toLocaleDateString()
                               : 'Not scheduled'}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums">
+                          <td className="px-4 py-3 text-right font-mono tabular-nums">
                             {camp.deliverySuccessCount.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums">
+                          <td className="px-4 py-3 text-right font-mono tabular-nums">
                             {camp.uniqueOpensCount.toLocaleString()} (
                             {camp.uniqueOpensRate}%)
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums">
+                          <td className="px-4 py-3 text-right font-mono tabular-nums">
                             {camp.uniqueClicksCount.toLocaleString()} (
                             {camp.uniqueClicksRate}%)
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-rose-700">
+                          <td className="px-4 py-3 text-right font-mono tabular-nums text-rose-400">
                             {camp.hardBouncesCount} / {camp.softBouncesCount}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums">
+                          <td className="px-4 py-3 text-right font-mono tabular-nums">
                             {camp.complaintsCount}
                           </td>
                           <td className="px-4 py-3">
@@ -1178,12 +1201,12 @@ export function DashboardView({
           {/* Capability Matrix Tab */}
           <Tabs.Content value="capabilities">
             <Card className="overflow-hidden">
-              <div className="border-b border-slate-200 bg-slate-50/60 px-4 py-3">
-                <h3 className="text-sm font-semibold text-slate-900">
+              <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-3">
+                <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
                   MailWizz 3.0.5 API &amp; Historical Engagement Capability
                   Matrix
                 </h3>
-                <p className="text-xs text-slate-600">
+                <p className="mt-0.5 text-xs text-[var(--fg-secondary)]">
                   Tracks verified capabilities vs API gaps. Tracking endpoints (
                   <code>trackOpening</code>, <code>trackUrl</code>) are blocked
                   at transport level so false engagement data can never be
@@ -1191,8 +1214,8 @@ export function DashboardView({
                 </p>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-muted)]">
                     <tr>
                       <th className="px-4 py-3">Category</th>
                       <th className="px-4 py-3">Endpoint / Feature</th>
@@ -1202,16 +1225,16 @@ export function DashboardView({
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200/80">
+                  <tbody className="divide-y divide-[var(--border-subtle)]">
                     {data.capabilities.map((cap) => (
                       <tr
                         key={cap.id}
-                        className="transition-colors hover:bg-slate-50/70"
+                        className="transition-colors hover:bg-[var(--bg-well)]"
                       >
-                        <td className="px-4 py-3 font-medium text-slate-800">
+                        <td className="px-4 py-3 font-medium text-[var(--fg-primary)]">
                           {cap.category}
                         </td>
-                        <td className="px-4 py-3 font-mono text-xs text-slate-700">
+                        <td className="px-4 py-3 font-mono text-xs text-[var(--fg-secondary)]">
                           {cap.endpointOrFeature}
                         </td>
                         <td className="px-4 py-3">
@@ -1228,7 +1251,7 @@ export function DashboardView({
                             {cap.status}
                           </Badge>
                         </td>
-                        <td className="px-4 py-3 text-xs text-slate-600">
+                        <td className="px-4 py-3 text-xs text-[var(--fg-secondary)]">
                           {cap.notes}
                         </td>
                       </tr>
@@ -1244,11 +1267,11 @@ export function DashboardView({
             <Card className="p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Lock className="h-4 w-4 text-emerald-700" />
+                  <h3 className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wider text-[var(--fg-primary)]">
+                    <Lock className="h-3.5 w-3.5 text-emerald-400" />
                     Phase 2 Mutation Gate Status
                   </h3>
-                  <p className="text-xs text-slate-600">
+                  <p className="mt-0.5 text-xs text-[var(--fg-secondary)]">
                     <code>ENABLE_MAILWIZZ_MUTATIONS=false</code> — All
                     unsubscribe, segment creation, and subscriber move
                     interfaces are disabled in Phase 1.
@@ -1262,12 +1285,12 @@ export function DashboardView({
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card className="overflow-hidden">
-                <div className="border-b border-slate-200 bg-slate-50/60 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-700">
+                <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-secondary)]">
                   Recent Background Worker Jobs
                 </div>
-                <div className="divide-y divide-slate-200/80">
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {data.recentJobs.length === 0 ? (
-                    <div className="p-4 text-xs text-slate-500">
+                    <div className="p-4 font-mono text-xs text-[var(--fg-muted)]">
                       No background jobs queued yet.
                     </div>
                   ) : (
@@ -1277,15 +1300,15 @@ export function DashboardView({
                         className="flex items-center justify-between px-4 py-3 text-xs"
                       >
                         <div>
-                          <div className="font-medium text-slate-900">
+                          <div className="font-mono font-medium text-[var(--fg-primary)]">
                             {job.type}
                           </div>
-                          <div className="text-slate-500">
+                          <div className="text-[var(--fg-muted)]">
                             {job.progressMessage ?? 'Pending'} (
                             {job.progressCurrent}/{job.progressTotal})
                           </div>
                           {job.lastError && (
-                            <div className="mt-0.5 text-rose-700">
+                            <div className="mt-0.5 text-rose-400">
                               {job.lastError}
                             </div>
                           )}
@@ -1311,12 +1334,12 @@ export function DashboardView({
               </Card>
 
               <Card className="overflow-hidden">
-                <div className="border-b border-slate-200 bg-slate-50/60 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-700">
+                <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-well)] px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--fg-secondary)]">
                   Administrative Audit Log (PII-Redacted)
                 </div>
-                <div className="divide-y divide-slate-200/80">
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {auditLogs.length === 0 ? (
-                    <div className="p-4 text-xs text-slate-500">
+                    <div className="p-4 font-mono text-xs text-[var(--fg-muted)]">
                       No audit entries yet.
                     </div>
                   ) : (
@@ -1326,13 +1349,13 @@ export function DashboardView({
                         className="flex items-center justify-between px-4 py-2.5 text-xs"
                       >
                         <div>
-                          <div className="font-medium text-slate-900">
+                          <div className="font-mono font-medium text-[var(--fg-primary)]">
                             {log.action}{' '}
-                            <span className="font-normal text-slate-500">
+                            <span className="font-normal text-[var(--fg-muted)]">
                               ({log.resourceType})
                             </span>
                           </div>
-                          <div className="text-slate-500">
+                          <div className="font-mono text-[11px] text-[var(--fg-muted)]">
                             {log.actorEmail} •{' '}
                             {new Date(log.createdAt).toLocaleString()}
                           </div>
