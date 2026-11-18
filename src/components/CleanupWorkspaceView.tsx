@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
+  Filter,
   Pause,
   Play,
   Plus,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import { AppShell } from './AppShell';
 import {
+  AgentWorkflowStrip,
   Badge,
   Button,
   Card,
@@ -118,7 +120,11 @@ export function CleanupWorkspaceView({
   csrfToken: string;
   isDemoMode: boolean;
   phase1ReadOnly: boolean;
-  connections?: Array<{ id: string; customerName: string; customerSlug: string }>;
+  connections?: Array<{
+    id: string;
+    customerName: string;
+    customerSlug: string;
+  }>;
   lists: ListOption[];
   initialOperations: OperationSummary[];
 }) {
@@ -126,7 +132,9 @@ export function CleanupWorkspaceView({
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>(
     defaultList?.customerConnectionId ?? connections[0]?.id ?? ''
   );
-  const [selectedListId, setSelectedListId] = useState<string>(defaultList?.id ?? '');
+  const [selectedListId, setSelectedListId] = useState<string>(
+    defaultList?.id ?? ''
+  );
   const visibleLists = selectedConnectionId
     ? lists.filter((l) => l.customerConnectionId === selectedConnectionId)
     : lists;
@@ -149,11 +157,18 @@ export function CleanupWorkspaceView({
 
   const [actionType, setActionType] = useState<string>('SUPPRESS');
   const [targetListUid, setTargetListUid] = useState<string>('');
-  const [targetSegmentName, setTargetSegmentName] = useState<string>('Hygiene Clean Segment');
+  const [targetSegmentName, setTargetSegmentName] = useState<string>(
+    'Hygiene Clean Segment'
+  );
   const [newListName, setNewListName] = useState<string>('');
-  const [newListFromName, setNewListFromName] = useState<string>('Acme Marketing');
-  const [newListFromEmail, setNewListFromEmail] = useState<string>('newsletter@example.com');
-  const [newListReplyTo, setNewListReplyTo] = useState<string>('support@example.com');
+  const [newListFromName, setNewListFromName] =
+    useState<string>('Acme Marketing');
+  const [newListFromEmail, setNewListFromEmail] = useState<string>(
+    'newsletter@example.com'
+  );
+  const [newListReplyTo, setNewListReplyTo] = useState<string>(
+    'support@example.com'
+  );
   const [batchSize, setBatchSize] = useState<number>(25);
 
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -163,7 +178,8 @@ export function CleanupWorkspaceView({
   const [largeBatchApproved, setLargeBatchApproved] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
-  const [operations, setOperations] = useState<OperationSummary[]>(initialOperations);
+  const [operations, setOperations] =
+    useState<OperationSummary[]>(initialOperations);
 
   function addFilterRow() {
     setRows((prev) => [
@@ -330,7 +346,9 @@ export function CleanupWorkspaceView({
       setLargeBatchApproved(false);
       await refreshOperations();
     } catch (err) {
-      setActionErr(err instanceof Error ? err.message : 'Dry-run preview failed.');
+      setActionErr(
+        err instanceof Error ? err.message : 'Dry-run preview failed.'
+      );
     } finally {
       setPreviewLoading(false);
     }
@@ -393,7 +411,11 @@ export function CleanupWorkspaceView({
     }
   }
 
-  async function toggleProtection(subId: string, field: 'isVip' | 'hasPaidRelationship', nextVal: boolean) {
+  async function toggleProtection(
+    subId: string,
+    field: 'isVip' | 'hasPaidRelationship',
+    nextVal: boolean
+  ) {
     await fetch('/api/subscribers/filter', {
       method: 'PATCH',
       headers: {
@@ -413,13 +435,22 @@ export function CleanupWorkspaceView({
       phase1ReadOnly={phase1ReadOnly}
     >
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200/80 pb-5">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
+                <Filter className="h-3 w-3 text-indigo-400" />
+                Hygiene Automation Engine
+              </span>
+            </div>
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
               Smart Filter &amp; Safe Cleanup Engine
             </h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Filter by engagement classification, delivery evidence, and protections using AND/OR logic. All hygiene actions default to <strong>DRY RUN</strong> with encrypted snapshots before any change.
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
+              Filter by engagement classification, delivery evidence, and VIP
+              protections using AND/OR logic. All hygiene actions default to{' '}
+              <strong>DRY RUN</strong> with AES-256-GCM encrypted pre-change
+              snapshots before any execution.
             </p>
           </div>
           <Badge tone={phase1ReadOnly ? 'emerald' : 'amber'}>
@@ -430,6 +461,11 @@ export function CleanupWorkspaceView({
           </Badge>
         </div>
 
+        <AgentWorkflowStrip
+          activeStage="review"
+          phase1ReadOnly={phase1ReadOnly}
+        />
+
         {/* Step 1: Smart Filter Builder */}
         <Card>
           <CardHeader>
@@ -438,7 +474,10 @@ export function CleanupWorkspaceView({
               <div className="flex flex-wrap items-center gap-2">
                 {connections.length > 0 && (
                   <>
-                    <label className="text-xs font-medium text-slate-600" htmlFor="cleanup-customer-scope">
+                    <label
+                      className="text-xs font-medium text-slate-600"
+                      htmlFor="cleanup-customer-scope"
+                    >
                       Customer:
                     </label>
                     <select
@@ -449,12 +488,14 @@ export function CleanupWorkspaceView({
                         const nextConn = e.target.value;
                         setSelectedConnectionId(nextConn);
                         const firstForConn = nextConn
-                          ? lists.find((l) => l.customerConnectionId === nextConn)
+                          ? lists.find(
+                              (l) => l.customerConnectionId === nextConn
+                            )
                           : lists[0];
                         setSelectedListId(firstForConn?.id ?? '');
                         void refreshOperations(nextConn);
                       }}
-                      className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                      className="rounded-lg border border-slate-300/90 bg-white px-2.5 py-1.5 text-xs font-medium"
                     >
                       <option value="">All Customers</option>
                       {connections.map((c) => (
@@ -465,16 +506,21 @@ export function CleanupWorkspaceView({
                     </select>
                   </>
                 )}
-                <label className="text-xs font-medium text-slate-600" htmlFor="list-scope">
+                <label
+                  className="text-xs font-medium text-slate-600"
+                  htmlFor="list-scope"
+                >
                   List Scope:
                 </label>
                 <select
                   id="list-scope"
                   value={selectedListId}
                   onChange={(e) => setSelectedListId(e.target.value)}
-                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                  className="rounded-lg border border-slate-300/90 bg-white px-2.5 py-1.5 text-xs font-medium"
                 >
-                  <option value="">All Mailing Lists ({visibleLists.length})</option>
+                  <option value="">
+                    All Mailing Lists ({visibleLists.length})
+                  </option>
                   {visibleLists.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.name} ({l.syncedSubscriberCount})
@@ -484,8 +530,10 @@ export function CleanupWorkspaceView({
                 <select
                   aria-label="Filter logic combinator"
                   value={combinator}
-                  onChange={(e) => setCombinator(e.target.value as 'AND' | 'OR')}
-                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium"
+                  onChange={(e) =>
+                    setCombinator(e.target.value as 'AND' | 'OR')
+                  }
+                  className="rounded-lg border border-slate-300/90 bg-white px-2.5 py-1.5 text-xs font-semibold"
                 >
                   <option value="AND">Match ALL rules (AND)</option>
                   <option value="OR">Match ANY rule (OR)</option>
@@ -497,7 +545,7 @@ export function CleanupWorkspaceView({
             {rows.map((row) => (
               <div
                 key={row.id}
-                className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 sm:grid-cols-12"
+                className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200/80 bg-slate-50/60 p-2.5 sm:grid-cols-12"
               >
                 <select
                   value={row.field}
@@ -508,19 +556,27 @@ export function CleanupWorkspaceView({
                       )
                     )
                   }
-                  className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm sm:col-span-4"
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium sm:col-span-4"
                 >
                   <option value="engagementStatus">Engagement Status</option>
-                  <option value="daysSinceLastEngagement">Days Since Last Engagement</option>
+                  <option value="daysSinceLastEngagement">
+                    Days Since Last Engagement
+                  </option>
                   <option value="daysSinceSignup">Days Since Signup</option>
-                  <option value="deliveredCampaignsCount">Delivered Campaigns Count</option>
+                  <option value="deliveredCampaignsCount">
+                    Delivered Campaigns Count
+                  </option>
                   <option value="opensCount">Unique Opens</option>
                   <option value="clicksCount">Unique Clicks</option>
                   <option value="emailDomain">Email Domain</option>
                   <option value="status">MailWizz Status</option>
                   <option value="source">Source / Signup Method</option>
-                  <option value="engagementConfidence">Engagement Confidence</option>
-                  <option value="isProtectedOrVip">Protected / VIP Status</option>
+                  <option value="engagementConfidence">
+                    Engagement Confidence
+                  </option>
+                  <option value="isProtectedOrVip">
+                    Protected / VIP Status
+                  </option>
                   <option value="isSuppressed">Application Suppressed</option>
                   <option value="isArchived">Logically Archived</option>
                 </select>
@@ -534,7 +590,7 @@ export function CleanupWorkspaceView({
                       )
                     )
                   }
-                  className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm sm:col-span-3"
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium sm:col-span-3"
                 >
                   <option value="in">is / in</option>
                   <option value="eq">equals</option>
@@ -557,7 +613,7 @@ export function CleanupWorkspaceView({
                       )
                     )
                   }
-                  className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm sm:col-span-4"
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs sm:col-span-4"
                 />
 
                 <Button
@@ -574,27 +630,41 @@ export function CleanupWorkspaceView({
             ))}
 
             <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              <Button type="button" variant="outline" size="sm" onClick={addFilterRow}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addFilterRow}
+              >
                 <Plus className="h-4 w-4" />
                 Add Filter Rule
               </Button>
-              <Button type="button" onClick={runFilterQuery} disabled={filtering}>
-                {filtering ? 'Counting Matching Subscribers...' : 'Preview Exact Match Count'}
+              <Button
+                type="button"
+                onClick={runFilterQuery}
+                disabled={filtering}
+              >
+                {filtering
+                  ? 'Counting Matching Subscribers...'
+                  : 'Preview Exact Match Count'}
               </Button>
             </div>
 
             {filterError && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800">
                 {filterError}
               </div>
             )}
 
             {matchedCount !== null && (
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="rounded-xl border border-slate-200/90 bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-base font-semibold text-slate-900">
+                  <div className="text-sm font-semibold text-slate-900">
                     Exact Match Count:{' '}
-                    <span className="text-indigo-700" data-testid="matched-count">
+                    <span
+                      className="font-mono text-base text-indigo-600"
+                      data-testid="matched-count"
+                    >
                       {matchedCount.toLocaleString()}
                     </span>{' '}
                     subscriber(s)
@@ -611,12 +681,14 @@ export function CleanupWorkspaceView({
                 {subscribers.length > 0 && (
                   <div className="mt-3 overflow-x-auto">
                     <table className="min-w-full divide-y divide-slate-200 text-xs">
-                      <thead className="bg-slate-50 text-left text-slate-600">
+                      <thead className="bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         <tr>
                           <th className="px-2.5 py-2">Email</th>
                           <th className="px-2.5 py-2">Class</th>
                           <th className="px-2.5 py-2">Confidence</th>
-                          <th className="px-2.5 py-2">Delivered / Open / Click</th>
+                          <th className="px-2.5 py-2">
+                            Delivered / Open / Click
+                          </th>
                           <th className="px-2.5 py-2">State</th>
                           <th className="px-2.5 py-2">Explanation</th>
                           <th className="px-2.5 py-2">Protection</th>
@@ -624,18 +696,21 @@ export function CleanupWorkspaceView({
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {subscribers.slice(0, 12).map((s) => (
-                          <tr key={s.id}>
+                          <tr key={s.id} className="hover:bg-slate-50/70">
                             <td className="px-2.5 py-2 font-medium text-slate-800">
                               {s.email}
                             </td>
                             <td className="px-2.5 py-2">
-                              <EngagementClassBadge status={s.engagementStatus} />
+                              <EngagementClassBadge
+                                status={s.engagementStatus}
+                              />
                             </td>
                             <td className="px-2.5 py-2 text-slate-600">
                               {s.engagementConfidence}
                             </td>
-                            <td className="px-2.5 py-2 text-slate-700">
-                              {s.deliveredCampaignsCount} / {s.opensCount} / {s.clicksCount}
+                            <td className="px-2.5 py-2 tabular-nums text-slate-700">
+                              {s.deliveredCampaignsCount} / {s.opensCount} /{' '}
+                              {s.clicksCount}
                             </td>
                             <td className="px-2.5 py-2">
                               {s.isSuppressed ? (
@@ -650,8 +725,10 @@ export function CleanupWorkspaceView({
                             <td className="px-2.5 py-2">
                               <button
                                 type="button"
-                                onClick={() => toggleProtection(s.id, 'isVip', !s.isVip)}
-                                className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100"
+                                onClick={() =>
+                                  toggleProtection(s.id, 'isVip', !s.isVip)
+                                }
+                                className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
                               >
                                 {s.isVip ? 'Remove VIP' : 'Mark VIP'}
                               </button>
@@ -690,7 +767,9 @@ export function CleanupWorkspaceView({
                   <option value="SUPPRESS">
                     Suppress from Routine Sends (Recommended Default)
                   </option>
-                  <option value="ARCHIVE">Logical Archive in App (+ Suppress)</option>
+                  <option value="ARCHIVE">
+                    Logical Archive in App (+ Suppress)
+                  </option>
                   <option value="UNSUBSCRIBE">
                     Bulk Unsubscribe via MailWizz API (Explicit Confirmation)
                   </option>
@@ -755,34 +834,34 @@ export function CleanupWorkspaceView({
             </div>
 
             {actionType === 'CREATE_LIST' && (
-              <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-4">
                 <input
                   type="text"
                   placeholder="New list name"
                   value={newListName}
                   onChange={(e) => setNewListName(e.target.value)}
-                  className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
                 />
                 <input
                   type="text"
                   placeholder="From name"
                   value={newListFromName}
                   onChange={(e) => setNewListFromName(e.target.value)}
-                  className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
                 />
                 <input
                   type="email"
                   placeholder="From email"
                   value={newListFromEmail}
                   onChange={(e) => setNewListFromEmail(e.target.value)}
-                  className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
                 />
                 <input
                   type="email"
                   placeholder="Reply-to email"
                   value={newListReplyTo}
                   onChange={(e) => setNewListReplyTo(e.target.value)}
-                  className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
                 />
               </div>
             )}
@@ -800,26 +879,27 @@ export function CleanupWorkspaceView({
             </div>
 
             {actionErr && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800">
                 {actionErr}
               </div>
             )}
             {actionMsg && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
                 {actionMsg}
               </div>
             )}
 
             {preview && (
-              <div className="space-y-4 rounded-xl border-2 border-indigo-200 bg-indigo-50/40 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-4 rounded-xl border border-slate-200/90 bg-slate-50/60 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/70 pb-3">
                   <div>
-                    <h3 className="text-base font-semibold text-slate-900">
+                    <h3 className="text-sm font-semibold text-slate-900">
                       Dry-Run Report Ready ({preview.dryRunReport.actionType})
                     </h3>
                     <p className="text-xs text-slate-600">
                       AES-256-GCM pre-change snapshot encrypted. Batches:{' '}
-                      {preview.dryRunReport.estimatedBatches} × {preview.dryRunReport.batchSize}
+                      {preview.dryRunReport.estimatedBatches} ×{' '}
+                      {preview.dryRunReport.batchSize}
                     </p>
                   </div>
                   <a
@@ -832,21 +912,23 @@ export function CleanupWorkspaceView({
                 </div>
 
                 <div className="grid grid-cols-3 gap-3 text-center">
-                  <div className="rounded-lg bg-white p-3">
+                  <div className="rounded-lg border border-slate-200/80 bg-white p-3">
                     <div className="text-xs text-slate-500">Matched</div>
-                    <div className="text-xl font-bold text-slate-900">
+                    <div className="mt-0.5 text-xl font-semibold tabular-nums text-slate-900">
                       {preview.matchedCount}
                     </div>
                   </div>
-                  <div className="rounded-lg bg-white p-3">
+                  <div className="rounded-lg border border-slate-200/80 bg-white p-3">
                     <div className="text-xs text-emerald-700">Eligible</div>
-                    <div className="text-xl font-bold text-emerald-700">
+                    <div className="mt-0.5 text-xl font-semibold tabular-nums text-emerald-700">
                       {preview.eligibleCount}
                     </div>
                   </div>
-                  <div className="rounded-lg bg-white p-3">
-                    <div className="text-xs text-amber-700">Safety Excluded</div>
-                    <div className="text-xl font-bold text-amber-700">
+                  <div className="rounded-lg border border-slate-200/80 bg-white p-3">
+                    <div className="text-xs text-amber-700">
+                      Safety Excluded
+                    </div>
+                    <div className="mt-0.5 text-xl font-semibold tabular-nums text-amber-700">
                       {preview.excludedCount}
                     </div>
                   </div>
@@ -863,26 +945,28 @@ export function CleanupWorkspaceView({
                   </div>
                 )}
 
-                {Object.keys(preview.dryRunReport.exclusionBreakdown).length > 0 && (
-                  <div className="rounded-lg bg-white p-3 text-xs">
+                {Object.keys(preview.dryRunReport.exclusionBreakdown).length >
+                  0 && (
+                  <div className="rounded-lg border border-slate-200/80 bg-white p-3 text-xs">
                     <div className="font-semibold text-slate-700">
                       Safety Exclusion Breakdown:
                     </div>
                     <ul className="mt-1 space-y-0.5 text-slate-600">
-                      {Object.entries(preview.dryRunReport.exclusionBreakdown).map(
-                        ([reason, cnt]) => (
-                          <li key={reason}>
-                            • {reason}: <strong>{cnt}</strong>
-                          </li>
-                        )
-                      )}
+                      {Object.entries(
+                        preview.dryRunReport.exclusionBreakdown
+                      ).map(([reason, cnt]) => (
+                        <li key={reason}>
+                          • {reason}: <strong>{cnt}</strong>
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 )}
 
-                <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
+                <div className="space-y-3 rounded-lg border border-slate-200/90 bg-white p-4">
                   <div className="text-xs font-semibold text-slate-800">
-                    Explicit Administrator Confirmation Required Before Execution
+                    Explicit Administrator Confirmation Required Before
+                    Execution
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
@@ -897,7 +981,7 @@ export function CleanupWorkspaceView({
                         value={confirmListName}
                         onChange={(e) => setConfirmListName(e.target.value)}
                         placeholder="Confirm list name"
-                        className="mt-1 w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm"
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
                       />
                     </div>
                     <div>
@@ -912,7 +996,7 @@ export function CleanupWorkspaceView({
                         value={confirmCount}
                         onChange={(e) => setConfirmCount(e.target.value)}
                         placeholder="Confirm eligible count"
-                        className="mt-1 w-full rounded border border-slate-300 px-2.5 py-1.5 text-sm"
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
                       />
                     </div>
                   </div>
@@ -922,9 +1006,12 @@ export function CleanupWorkspaceView({
                       <input
                         type="checkbox"
                         checked={largeBatchApproved}
-                        onChange={(e) => setLargeBatchApproved(e.target.checked)}
+                        onChange={(e) =>
+                          setLargeBatchApproved(e.target.checked)
+                        }
                       />
-                      Large-batch approval: I confirm modifying {preview.eligibleCount} records (&ge;{' '}
+                      Large-batch approval: I confirm modifying{' '}
+                      {preview.eligibleCount} records (&ge;{' '}
                       {preview.dryRunReport.largeChangeThreshold} threshold).
                     </label>
                   )}
@@ -942,35 +1029,41 @@ export function CleanupWorkspaceView({
         {/* Step 3: Batch Job Ledger & Recovery Controls */}
         <Card>
           <CardHeader>
-            <CardTitle>3. Cleanup Operations, Checkpoints &amp; Recovery</CardTitle>
+            <CardTitle>
+              3. Cleanup Operations, Checkpoints &amp; Recovery
+            </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-xs">
-                <thead className="bg-slate-50 text-left text-slate-600">
+                <thead className="bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">Action</th>
-                    <th className="px-3 py-2">List</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Counts (Elig / Ok / Skip / Fail)</th>
-                    <th className="px-3 py-2">Controls</th>
+                    <th className="px-4 py-3">Action</th>
+                    <th className="px-4 py-3">List</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">
+                      Counts (Elig / Ok / Skip / Fail)
+                    </th>
+                    <th className="px-4 py-3">Controls</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {operations.map((op) => (
-                    <tr key={op.id}>
-                      <td className="px-3 py-2 font-medium text-slate-900">
+                    <tr key={op.id} className="hover:bg-slate-50/60">
+                      <td className="px-4 py-3 font-medium text-slate-900">
                         {op.actionType}
                       </td>
-                      <td className="px-3 py-2 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700">
                         {op.mailingList?.name ?? 'Multi-list'}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-4 py-3">
                         <Badge
+                          dot
                           tone={
                             op.status === 'COMPLETED'
                               ? 'emerald'
-                              : op.status === 'AUTO_STOPPED' || op.status === 'FAILED'
+                              : op.status === 'AUTO_STOPPED' ||
+                                  op.status === 'FAILED'
                                 ? 'rose'
                                 : op.status === 'PAUSED'
                                   ? 'amber'
@@ -980,60 +1073,75 @@ export function CleanupWorkspaceView({
                           {op.status}
                         </Badge>
                         {op.autoStopReason && (
-                          <div className="mt-1 text-rose-700">{op.autoStopReason}</div>
+                          <div className="mt-1 text-rose-700">
+                            {op.autoStopReason}
+                          </div>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {op.eligibleCount} / {op.succeededCount} / {op.skippedCount} /{' '}
-                        {op.failedCount}
+                      <td className="px-4 py-3 tabular-nums text-slate-700">
+                        {op.eligibleCount} / {op.succeededCount} /{' '}
+                        {op.skippedCount} / {op.failedCount}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
                           <a
                             href={`/api/cleanup/${op.id}?format=csv`}
-                            className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 font-medium text-slate-700 hover:bg-slate-50"
                           >
                             <Download className="h-3 w-3" />
                             CSV
                           </a>
-                          {(op.status === 'RUNNING' || op.status === 'CONFIRMED') && (
+                          {(op.status === 'RUNNING' ||
+                            op.status === 'CONFIRMED') && (
                             <button
                               type="button"
-                              onClick={() => runOperationControl(op.id, 'PAUSE')}
-                              className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900"
+                              onClick={() =>
+                                runOperationControl(op.id, 'PAUSE')
+                              }
+                              className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 font-medium text-amber-900"
                             >
                               <Pause className="h-3 w-3" />
                               Pause
                             </button>
                           )}
-                          {(op.status === 'PAUSED' || op.status === 'AUTO_STOPPED') && (
+                          {(op.status === 'PAUSED' ||
+                            op.status === 'AUTO_STOPPED') && (
                             <button
                               type="button"
-                              onClick={() => runOperationControl(op.id, 'RESUME')}
-                              className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-900"
+                              onClick={() =>
+                                runOperationControl(op.id, 'RESUME')
+                              }
+                              className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 font-medium text-emerald-900"
                             >
                               <Play className="h-3 w-3" />
                               Resume
                             </button>
                           )}
-                          {op.status !== 'COMPLETED' && op.status !== 'CANCELLED' && (
-                            <button
-                              type="button"
-                              onClick={() => runOperationControl(op.id, 'CANCEL')}
-                              className="inline-flex items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-rose-900"
-                            >
-                              <XCircle className="h-3 w-3" />
-                              Cancel
-                            </button>
-                          )}
-                          {(op.actionType === 'SUPPRESS' || op.actionType === 'ARCHIVE') &&
+                          {op.status !== 'COMPLETED' &&
+                            op.status !== 'CANCELLED' && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  runOperationControl(op.id, 'CANCEL')
+                                }
+                                className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-50 px-2 py-1 font-medium text-rose-900"
+                              >
+                                <XCircle className="h-3 w-3" />
+                                Cancel
+                              </button>
+                            )}
+                          {(op.actionType === 'SUPPRESS' ||
+                            op.actionType === 'ARCHIVE') &&
                             op.status === 'COMPLETED' && (
                               <button
                                 type="button"
                                 onClick={() =>
-                                  runOperationControl(op.id, 'RESTORE_SUPPRESSION')
+                                  runOperationControl(
+                                    op.id,
+                                    'RESTORE_SUPPRESSION'
+                                  )
                                 }
-                                className="inline-flex items-center gap-1 rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-indigo-900"
+                                className="inline-flex items-center gap-1 rounded-md border border-indigo-300 bg-indigo-50 px-2 py-1 font-medium text-indigo-900"
                               >
                                 <RotateCcw className="h-3 w-3" />
                                 Restore Suppressions
@@ -1045,8 +1153,12 @@ export function CleanupWorkspaceView({
                   ))}
                   {operations.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
-                        No cleanup operations created yet. Run a dry-run preview above.
+                      <td
+                        colSpan={5}
+                        className="px-4 py-6 text-center text-slate-500"
+                      >
+                        No cleanup operations created yet. Run a dry-run preview
+                        above.
                       </td>
                     </tr>
                   )}

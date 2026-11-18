@@ -18,7 +18,17 @@ import {
   Trash2,
 } from 'lucide-react';
 import { AppShell } from './AppShell';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, type BadgeTone } from './ui';
+import {
+  AgentWorkflowStrip,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  StatusDot,
+  type BadgeTone,
+} from './ui';
 import type { SafeCustomerConnectionDto } from '@/services/mailwizz/connections';
 
 interface InstallationOption {
@@ -110,12 +120,17 @@ export function ConnectionsView({
   const [installationFilter, setInstallationFilter] = useState('');
   const [page, setPage] = useState(initialData.page || 1);
   const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [feedback, setFeedback] = useState<{
+    type: 'ok' | 'err';
+    text: string;
+  } | null>(null);
 
   // Add connection form state
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newBaseUrl, setNewBaseUrl] = useState('https://app.nohitchweb.com/api/index.php');
+  const [newBaseUrl, setNewBaseUrl] = useState(
+    'https://app.nohitchweb.com/api/index.php'
+  );
   const [newApiKey, setNewApiKey] = useState('');
   const [newAuthMode, setNewAuthMode] = useState('auto');
   const [newWebhookSecret, setNewWebhookSecret] = useState('');
@@ -124,10 +139,12 @@ export function ConnectionsView({
   const [validateOnSave, setValidateOnSave] = useState(true);
 
   // Inline modal/action state per selected connection
-  const [rotateTarget, setRotateTarget] = useState<SafeCustomerConnectionDto | null>(null);
+  const [rotateTarget, setRotateTarget] =
+    useState<SafeCustomerConnectionDto | null>(null);
   const [rotateApiKeyInput, setRotateApiKeyInput] = useState('');
 
-  const [editTarget, setEditTarget] = useState<SafeCustomerConnectionDto | null>(null);
+  const [editTarget, setEditTarget] =
+    useState<SafeCustomerConnectionDto | null>(null);
   const [editName, setEditName] = useState('');
   const [editBaseUrl, setEditBaseUrl] = useState('');
   const [editAuthMode, setEditAuthMode] = useState('auto');
@@ -135,7 +152,8 @@ export function ConnectionsView({
   const [editWebhookSecret, setEditWebhookSecret] = useState('');
   const [editNotes, setEditNotes] = useState('');
 
-  const [deleteTarget, setDeleteTarget] = useState<SafeCustomerConnectionDto | null>(null);
+  const [deleteTarget, setDeleteTarget] =
+    useState<SafeCustomerConnectionDto | null>(null);
   const [deleteConfirmPhrase, setDeleteConfirmPhrase] = useState('');
 
   const [sampleData, setSampleData] = useState<SampleResponse | null>(null);
@@ -183,7 +201,9 @@ export function ConnectionsView({
           baseUrl: newBaseUrl,
           apiKey: newApiKey,
           authMode: newAuthMode,
-          ...(newWebhookSecret.trim() ? { webhookSecret: newWebhookSecret.trim() } : {}),
+          ...(newWebhookSecret.trim()
+            ? { webhookSecret: newWebhookSecret.trim() }
+            : {}),
           maxRequestsPerSecond: Number(newMaxRps) || 5,
           ...(newNotes.trim() ? { notes: newNotes.trim() } : {}),
           validateImmediately: validateOnSave,
@@ -196,7 +216,10 @@ export function ConnectionsView({
         validation?: { ok: boolean; message: string } | null;
       };
       if (!res.ok) {
-        setFeedback({ type: 'err', text: json.error ?? 'Failed to add customer connection.' });
+        setFeedback({
+          type: 'err',
+          text: json.error ?? 'Failed to add customer connection.',
+        });
         return;
       }
 
@@ -235,7 +258,8 @@ export function ConnectionsView({
       } else {
         setFeedback({
           type: json.validation?.ok ? 'ok' : 'err',
-          text: json.validation?.message ?? json.error ?? 'Validation finished.',
+          text:
+            json.validation?.message ?? json.error ?? 'Validation finished.',
         });
       }
       await refreshList();
@@ -256,9 +280,15 @@ export function ConnectionsView({
         },
         body: JSON.stringify({ action: 'FULL_SYNC' }),
       });
-      const json = (await res.json()) as { error?: string; job?: { id: string } };
+      const json = (await res.json()) as {
+        error?: string;
+        job?: { id: string };
+      };
       if (!res.ok) {
-        setFeedback({ type: 'err', text: json.error ?? 'Failed to queue read-only sync.' });
+        setFeedback({
+          type: 'err',
+          text: json.error ?? 'Failed to queue read-only sync.',
+        });
         return;
       }
       setFeedback({
@@ -278,7 +308,10 @@ export function ConnectionsView({
       const res = await fetch(`/api/connections/${conn.id}/sample?limit=10`);
       const json = (await res.json()) as SampleResponse & { error?: string };
       if (!res.ok) {
-        setFeedback({ type: 'err', text: json.error ?? 'Failed to load bounded sample.' });
+        setFeedback({
+          type: 'err',
+          text: json.error ?? 'Failed to load bounded sample.',
+        });
         return;
       }
       setSampleData(json);
@@ -341,7 +374,9 @@ export function ConnectionsView({
         baseUrl: editBaseUrl,
         authMode: editAuthMode,
         maxRequestsPerSecond: Number(editMaxRps) || 5,
-        ...(editWebhookSecret.trim() ? { webhookSecret: editWebhookSecret.trim() } : {}),
+        ...(editWebhookSecret.trim()
+          ? { webhookSecret: editWebhookSecret.trim() }
+          : {}),
         notes: editNotes || null,
       },
       `Updated connection settings for "${editName}".`
@@ -359,7 +394,8 @@ export function ConnectionsView({
       {
         action: 'ARCHIVE_CONNECTION',
         confirmationPhrase: deleteConfirmPhrase,
-        reason: 'Disabled and archived by administrator (consent, snapshot, and audit history preserved)',
+        reason:
+          'Disabled and archived by administrator (consent, snapshot, and audit history preserved)',
       },
       `Disabled and archived "${deleteTarget.customerName}". Credentials revoked; consent, cleanup snapshots, and audit history preserved.`
     );
@@ -410,14 +446,23 @@ export function ConnectionsView({
       phase1ReadOnly={phase1ReadOnly}
     >
       <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200/80 pb-5">
           <div>
-            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-              <PlugZap className="h-6 w-6 text-indigo-600" />
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
+                <PlugZap className="h-3 w-3 text-indigo-400" />
+                Multi-Tenant API Governance
+              </span>
+            </div>
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
               MailWizz Customer API Connections
             </h1>
-            <p className="mt-1 max-w-3xl text-sm text-slate-600">
-              Manage multiple MailWizz customer accounts on one or more installations. Every customer account uses its own encrypted API key, rate limit, sync state, webhook secret, compatibility verification, and strictly isolated lists/subscribers/campaigns.
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
+              Manage multiple MailWizz customer accounts across one or more
+              installations. Every customer account uses its own AES-256-GCM
+              encrypted API key, rate governor, sync cursor, webhook secret,
+              compatibility verification, and strictly isolated
+              lists/subscribers/campaigns.
             </p>
           </div>
           <Button
@@ -430,23 +475,35 @@ export function ConnectionsView({
           </Button>
         </div>
 
+        <AgentWorkflowStrip
+          activeStage="observe"
+          phase1ReadOnly={phase1ReadOnly}
+        />
+
         {hasQuarantined && (
-          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-950">
-            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-            <div>
-              <div className="font-semibold">Quarantined Legacy Account Present</div>
-              <p className="mt-0.5">
-                Legacy rows imported without an unambiguous single customer owner were placed into a disabled quarantine container so they never leak into active customer workspaces or sync automatically.
-              </p>
+          <Card className="border-amber-200/90 bg-amber-50/80 px-4 py-3 text-xs text-amber-950">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+              <div>
+                <div className="font-semibold">
+                  Quarantined Legacy Account Present
+                </div>
+                <p className="mt-0.5 text-amber-900/90">
+                  Legacy rows imported without an unambiguous single customer
+                  owner were placed into a disabled quarantine container so they
+                  never leak into active customer workspaces or sync
+                  automatically.
+                </p>
+              </div>
             </div>
-          </div>
+          </Card>
         )}
 
         {feedback && (
           <div
             role="status"
             data-testid="connections-feedback"
-            className={`rounded-xl border px-4 py-3 text-sm ${
+            className={`rounded-lg border px-4 py-2.5 text-xs font-medium ${
               feedback.type === 'ok'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
                 : 'border-rose-200 bg-rose-50 text-rose-900'
@@ -463,9 +520,15 @@ export function ConnectionsView({
               <CardTitle>Add MailWizz Customer Account</CardTitle>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleCreateConnection} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <form
+                onSubmit={handleCreateConnection}
+                className="grid grid-cols-1 gap-4 md:grid-cols-2"
+              >
                 <div>
-                  <label htmlFor="conn-name" className="block text-xs font-medium text-slate-700">
+                  <label
+                    htmlFor="conn-name"
+                    className="block text-xs font-medium text-slate-700"
+                  >
                     Customer Name
                   </label>
                   <input
@@ -479,7 +542,10 @@ export function ConnectionsView({
                   />
                 </div>
                 <div>
-                  <label htmlFor="conn-url" className="block text-xs font-medium text-slate-700">
+                  <label
+                    htmlFor="conn-url"
+                    className="block text-xs font-medium text-slate-700"
+                  >
                     MailWizz API Base URL
                   </label>
                   <input
@@ -492,11 +558,15 @@ export function ConnectionsView({
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs"
                   />
                   <p className="mt-1 text-[11px] text-slate-500">
-                    MailWizz 3.0.5 uses <code>/api/index.php</code> unless Clean URLs are enabled.
+                    MailWizz 3.0.5 uses <code>/api/index.php</code> unless Clean
+                    URLs are enabled.
                   </p>
                 </div>
                 <div>
-                  <label htmlFor="conn-apikey" className="block text-xs font-medium text-slate-700">
+                  <label
+                    htmlFor="conn-apikey"
+                    className="block text-xs font-medium text-slate-700"
+                  >
                     Customer API Key (Encrypted at Rest)
                   </label>
                   <input
@@ -511,7 +581,10 @@ export function ConnectionsView({
                   />
                 </div>
                 <div>
-                  <label htmlFor="conn-auth" className="block text-xs font-medium text-slate-700">
+                  <label
+                    htmlFor="conn-auth"
+                    className="block text-xs font-medium text-slate-700"
+                  >
                     Auth Mode
                   </label>
                   <select
@@ -520,14 +593,21 @@ export function ConnectionsView({
                     onChange={(e) => setNewAuthMode(e.target.value)}
                     className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                   >
-                    <option value="auto">Auto (MailWizz 3.x X-Api-Key / Bearer fallback)</option>
+                    <option value="auto">
+                      Auto (MailWizz 3.x X-Api-Key / Bearer fallback)
+                    </option>
                     <option value="x-api-key">X-Api-Key Only (Recommended)</option>
-                    <option value="legacy-hmac">Legacy Signature (X-MW-SIGNATURE)</option>
+                    <option value="legacy-hmac">
+                      Legacy Signature (X-MW-SIGNATURE)
+                    </option>
                     <option value="bearer">Bearer Token</option>
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="conn-webhook" className="block text-xs font-medium text-slate-700">
+                  <label
+                    htmlFor="conn-webhook"
+                    className="block text-xs font-medium text-slate-700"
+                  >
                     Dedicated Webhook Secret (Optional)
                   </label>
                   <input
@@ -541,7 +621,10 @@ export function ConnectionsView({
                   />
                 </div>
                 <div>
-                  <label htmlFor="conn-rps" className="block text-xs font-medium text-slate-700">
+                  <label
+                    htmlFor="conn-rps"
+                    className="block text-xs font-medium text-slate-700"
+                  >
                     Max API Requests / Second
                   </label>
                   <input
@@ -555,7 +638,10 @@ export function ConnectionsView({
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label htmlFor="conn-notes" className="block text-xs font-medium text-slate-700">
+                  <label
+                    htmlFor="conn-notes"
+                    className="block text-xs font-medium text-slate-700"
+                  >
                     Notes (Optional)
                   </label>
                   <input
@@ -566,7 +652,7 @@ export function ConnectionsView({
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   />
                 </div>
-                <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-2">
                   <label className="flex items-center gap-2 text-xs text-slate-700">
                     <input
                       type="checkbox"
@@ -594,11 +680,11 @@ export function ConnectionsView({
         )}
 
         {/* Filter & Search Bar */}
-        <Card className="p-4">
+        <Card className="p-3.5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                 <input
                   type="search"
                   aria-label="Search customer connections"
@@ -609,7 +695,7 @@ export function ConnectionsView({
                     setSearch(v);
                     void refreshList(1, v, statusFilter, installationFilter);
                   }}
-                  className="rounded-lg border border-slate-300 bg-white pl-8 pr-3 py-1.5 text-sm"
+                  className="rounded-lg border border-slate-300/90 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-900 shadow-2xs focus:border-indigo-600 focus:outline-none"
                 />
               </div>
 
@@ -621,7 +707,7 @@ export function ConnectionsView({
                   setStatusFilter(v);
                   void refreshList(1, search, v, installationFilter);
                 }}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+                className="rounded-lg border border-slate-300/90 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-2xs"
               >
                 <option value="">All Statuses</option>
                 <option value="CONNECTED">CONNECTED</option>
@@ -639,9 +725,11 @@ export function ConnectionsView({
                   setInstallationFilter(v);
                   void refreshList(1, search, statusFilter, v);
                 }}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+                className="rounded-lg border border-slate-300/90 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-2xs"
               >
-                <option value="">All Installations ({data.installations.length})</option>
+                <option value="">
+                  All Installations ({data.installations.length})
+                </option>
                 {data.installations.map((inst) => (
                   <option key={inst.id} value={inst.id}>
                     {inst.hostname} ({inst.connectionCount})
@@ -651,8 +739,9 @@ export function ConnectionsView({
             </div>
 
             <div className="flex items-center gap-2 text-xs text-slate-600">
-              <span>
-                {data.total} connection(s) • Page {data.page} of {data.totalPages}
+              <span className="tabular-nums">
+                {data.total} connection(s) • Page {data.page} of{' '}
+                {data.totalPages}
               </span>
               <Button
                 type="button"
@@ -678,9 +767,9 @@ export function ConnectionsView({
 
         {/* Rotate Key Dialog */}
         {rotateTarget && (
-          <Card className="border-indigo-200 bg-indigo-50/40 p-5">
+          <Card className="p-5">
             <form onSubmit={submitRotateKey} className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                   <KeyRound className="h-4 w-4 text-indigo-600" />
                   Rotate API Key for {rotateTarget.customerName}
@@ -688,13 +777,19 @@ export function ConnectionsView({
                 <button
                   type="button"
                   onClick={() => setRotateTarget(null)}
-                  className="text-xs text-slate-500 hover:text-slate-700"
+                  className="text-xs font-medium text-slate-500 hover:text-slate-800"
                 >
                   Close
                 </button>
               </div>
               <p className="text-xs text-slate-600">
-                Current key: <code>{rotateTarget.apiKeyMasked ?? 'none'}</code> (v{rotateTarget.credentialVersion ?? 0}). Rotating deactivates the previous credential immediately and invalidates cached compatibility until re-verified.
+                Current key:{' '}
+                <code className="rounded bg-slate-100 px-1.5 py-0.5">
+                  {rotateTarget.apiKeyMasked ?? 'none'}
+                </code>{' '}
+                (v{rotateTarget.credentialVersion ?? 0}). Rotating deactivates
+                the previous credential immediately and invalidates cached
+                compatibility until re-verified.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <input
@@ -716,22 +811,27 @@ export function ConnectionsView({
 
         {/* Edit Settings Dialog */}
         {editTarget && (
-          <Card className="border-slate-300 p-5">
-            <form onSubmit={submitEditConnection} className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="md:col-span-2 flex items-center justify-between">
+          <Card className="p-5">
+            <form
+              onSubmit={submitEditConnection}
+              className="grid grid-cols-1 gap-3 md:grid-cols-2"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 md:col-span-2">
                 <h2 className="text-sm font-semibold text-slate-900">
                   Edit Settings: {editTarget.customerName}
                 </h2>
                 <button
                   type="button"
                   onClick={() => setEditTarget(null)}
-                  className="text-xs text-slate-500 hover:text-slate-700"
+                  className="text-xs font-medium text-slate-500 hover:text-slate-800"
                 >
                   Close
                 </button>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700">Customer Name</label>
+                <label className="block text-xs font-medium text-slate-700">
+                  Customer Name
+                </label>
                 <input
                   type="text"
                   required
@@ -741,7 +841,9 @@ export function ConnectionsView({
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700">Base URL</label>
+                <label className="block text-xs font-medium text-slate-700">
+                  Base URL
+                </label>
                 <input
                   type="url"
                   required
@@ -751,7 +853,9 @@ export function ConnectionsView({
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700">Auth Mode</label>
+                <label className="block text-xs font-medium text-slate-700">
+                  Auth Mode
+                </label>
                 <select
                   value={editAuthMode}
                   onChange={(e) => setEditAuthMode(e.target.value)}
@@ -764,7 +868,9 @@ export function ConnectionsView({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700">Max RPS</label>
+                <label className="block text-xs font-medium text-slate-700">
+                  Max RPS
+                </label>
                 <input
                   type="number"
                   min={1}
@@ -788,7 +894,9 @@ export function ConnectionsView({
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700">Notes</label>
+                <label className="block text-xs font-medium text-slate-700">
+                  Notes
+                </label>
                 <input
                   type="text"
                   value={editNotes}
@@ -796,8 +904,12 @@ export function ConnectionsView({
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
                 />
               </div>
-              <div className="md:col-span-2 flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
+              <div className="flex justify-end gap-2 md:col-span-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditTarget(null)}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" disabled={loading}>
@@ -809,91 +921,107 @@ export function ConnectionsView({
         )}
 
         {/* Safe Archive / Empty Connection Removal Dialog */}
-        {deleteTarget && (() => {
-          const hasRetainedHistory =
-            deleteTarget.counts.mailingLists > 0 ||
-            deleteTarget.counts.subscribers > 0 ||
-            deleteTarget.counts.campaigns > 0 ||
-            deleteTarget.counts.cleanupOperations > 0;
-          return (
-            <Card className="border-rose-200 bg-rose-50/50 p-5">
-              <form
-                onSubmit={(e) => {
-                  if (hasRetainedHistory) {
-                    e.preventDefault();
-                    void submitArchiveConnection();
-                  } else {
-                    void submitDeleteConnection(e);
-                  }
-                }}
-                className="space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <h2 className="flex items-center gap-2 text-sm font-semibold text-rose-900">
-                    <AlertTriangle className="h-4 w-4 text-rose-700" />
-                    {hasRetainedHistory
-                      ? 'Disable & Archive Customer Connection (History Preserved)'
-                      : 'Archive or Remove Empty Customer Connection'}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTarget(null)}
-                    className="text-xs text-slate-500 hover:text-slate-700"
-                  >
-                    Close
-                  </button>
-                </div>
-                <p className="text-xs text-rose-900">
-                  {hasRetainedHistory ? (
-                    <>
-                      <strong>{deleteTarget.customerName}</strong> retains synced lists, subscribers, or cleanup records (
-                      <code>{deleteTarget.counts.subscribers}</code> subscribers, <code>{deleteTarget.counts.cleanupOperations}</code> cleanup ops). Hard deletion is blocked to protect consent history, recovery snapshots, and audit accountability. Archiving revokes all API keys and webhook secrets, pauses sync, and disables remote calls while preserving history. Type{' '}
-                      <code>{deleteTarget.customerName}</code> or <code>{deleteTarget.customerSlug}</code> to confirm.
-                    </>
-                  ) : (
-                    <>
-                      This connection has no retained lists, subscribers, campaigns, or cleanup history. You may disable &amp; archive it or permanently delete the empty connection record for{' '}
-                      <strong>{deleteTarget.customerName}</strong> (slug: <code>{deleteTarget.customerSlug}</code>). Audit logs remain preserved. Remote MailWizz data is never modified. Type{' '}
-                      <code>{deleteTarget.customerName}</code> or <code>{deleteTarget.customerSlug}</code> to confirm.
-                    </>
-                  )}
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="text"
-                    required
-                    placeholder={`Type "${deleteTarget.customerName}"`}
-                    value={deleteConfirmPhrase}
-                    onChange={(e) => setDeleteConfirmPhrase(e.target.value)}
-                    className="min-w-72 flex-1 rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={loading}
-                    onClick={() => void submitArchiveConnection()}
-                  >
-                    <Power className="h-4 w-4" />
-                    Disable &amp; Archive (Keep History)
-                  </Button>
-                  {!hasRetainedHistory && (
-                    <Button type="submit" variant="danger" disabled={loading}>
-                      <Trash2 className="h-4 w-4" />
-                      Permanently Delete Connection
+        {deleteTarget &&
+          (() => {
+            const hasRetainedHistory =
+              deleteTarget.counts.mailingLists > 0 ||
+              deleteTarget.counts.subscribers > 0 ||
+              deleteTarget.counts.campaigns > 0 ||
+              deleteTarget.counts.cleanupOperations > 0;
+            return (
+              <Card className="border-rose-200/90 p-5">
+                <form
+                  onSubmit={(e) => {
+                    if (hasRetainedHistory) {
+                      e.preventDefault();
+                      void submitArchiveConnection();
+                    } else {
+                      void submitDeleteConnection(e);
+                    }
+                  }}
+                  className="space-y-3"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-rose-900">
+                      <AlertTriangle className="h-4 w-4 text-rose-600" />
+                      {hasRetainedHistory
+                        ? 'Disable & Archive Customer Connection (History Preserved)'
+                        : 'Archive or Remove Empty Customer Connection'}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(null)}
+                      className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <p className="text-xs leading-relaxed text-slate-700">
+                    {hasRetainedHistory ? (
+                      <>
+                        <strong>{deleteTarget.customerName}</strong> retains
+                        synced lists, subscribers, or cleanup records (
+                        <code>{deleteTarget.counts.subscribers}</code>{' '}
+                        subscribers,{' '}
+                        <code>{deleteTarget.counts.cleanupOperations}</code>{' '}
+                        cleanup ops). Hard deletion is blocked to protect
+                        consent history, recovery snapshots, and audit
+                        accountability. Archiving revokes all API keys and
+                        webhook secrets, pauses sync, and disables remote calls
+                        while preserving history. Type{' '}
+                        <code>{deleteTarget.customerName}</code> or{' '}
+                        <code>{deleteTarget.customerSlug}</code> to confirm.
+                      </>
+                    ) : (
+                      <>
+                        This connection has no retained lists, subscribers,
+                        campaigns, or cleanup history. You may disable &amp;
+                        archive it or permanently delete the empty connection
+                        record for <strong>{deleteTarget.customerName}</strong>{' '}
+                        (slug: <code>{deleteTarget.customerSlug}</code>). Audit
+                        logs remain preserved. Remote MailWizz data is never
+                        modified. Type <code>{deleteTarget.customerName}</code>{' '}
+                        or <code>{deleteTarget.customerSlug}</code> to confirm.
+                      </>
+                    )}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder={`Type "${deleteTarget.customerName}"`}
+                      value={deleteConfirmPhrase}
+                      onChange={(e) => setDeleteConfirmPhrase(e.target.value)}
+                      className="min-w-72 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={loading}
+                      onClick={() => void submitArchiveConnection()}
+                    >
+                      <Power className="h-4 w-4" />
+                      Disable &amp; Archive (Keep History)
                     </Button>
-                  )}
-                </div>
-              </form>
-            </Card>
-          );
-        })()}
+                    {!hasRetainedHistory && (
+                      <Button type="submit" variant="danger" disabled={loading}>
+                        <Trash2 className="h-4 w-4" />
+                        Permanently Delete Connection
+                      </Button>
+                    )}
+                  </div>
+                </form>
+              </Card>
+            );
+          })()}
 
         {/* Bounded Live Read-Only Sample Inspector */}
         {sampleData && (
-          <Card className="border-sky-200 bg-sky-50/30">
+          <Card>
             <CardHeader className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>
-                Read-Only Live Sample (Max {sampleData.limit}): {sampleData.connection.customerName}{' '}
+                Read-Only Live Sample (Max {sampleData.limit}):{' '}
+                {sampleData.connection.customerName}{' '}
                 <span className="font-mono text-xs text-slate-500">
                   ({sampleData.connection.apiKeyMasked})
                 </span>
@@ -901,7 +1029,7 @@ export function ConnectionsView({
               <button
                 type="button"
                 onClick={() => setSampleData(null)}
-                className="text-xs text-slate-600 hover:text-slate-900"
+                className="text-xs font-medium text-slate-600 hover:text-slate-900"
               >
                 Close Sample
               </button>
@@ -909,28 +1037,40 @@ export function ConnectionsView({
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
-                  <div className="text-xs font-semibold uppercase text-slate-500">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Lists (Reported: {sampleData.totalListsReported})
                   </div>
                   <ul className="mt-1.5 space-y-1 text-xs">
                     {sampleData.lists.map((l) => (
-                      <li key={l.listUid} className="rounded bg-white px-2.5 py-1.5 border border-slate-200">
-                        <div className="font-medium text-slate-900">{l.name}</div>
+                      <li
+                        key={l.listUid}
+                        className="rounded-lg border border-slate-200/80 bg-slate-50/50 px-2.5 py-1.5"
+                      >
+                        <div className="font-medium text-slate-900">
+                          {l.name}
+                        </div>
                         <div className="text-slate-500">
-                          UID: <code>{l.listUid}</code> • Count: {l.subscribersCount ?? 'n/a'}
+                          UID: <code>{l.listUid}</code> • Count:{' '}
+                          {l.subscribersCount ?? 'n/a'}
                         </div>
                       </li>
                     ))}
                   </ul>
                 </div>
                 <div>
-                  <div className="text-xs font-semibold uppercase text-slate-500">
-                    Subscribers Sample (Masked, List {sampleData.sampledListUid ?? 'none'})
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Subscribers Sample (Masked, List{' '}
+                    {sampleData.sampledListUid ?? 'none'})
                   </div>
                   <ul className="mt-1.5 space-y-1 text-xs">
                     {sampleData.subscribers.map((s) => (
-                      <li key={s.subscriberUid} className="rounded bg-white px-2.5 py-1.5 border border-slate-200">
-                        <div className="font-mono text-slate-900">{s.maskedEmail}</div>
+                      <li
+                        key={s.subscriberUid}
+                        className="rounded-lg border border-slate-200/80 bg-slate-50/50 px-2.5 py-1.5"
+                      >
+                        <div className="font-mono text-slate-900">
+                          {s.maskedEmail}
+                        </div>
                         <div className="text-slate-500">
                           {s.subscriberUid} • {s.status}
                         </div>
@@ -939,13 +1079,19 @@ export function ConnectionsView({
                   </ul>
                 </div>
                 <div>
-                  <div className="text-xs font-semibold uppercase text-slate-500">
-                    Campaigns Sample (Reported: {sampleData.campaignsTotalReported ?? 0})
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Campaigns Sample (Reported:{' '}
+                    {sampleData.campaignsTotalReported ?? 0})
                   </div>
                   <ul className="mt-1.5 space-y-1 text-xs">
                     {sampleData.campaigns.map((c) => (
-                      <li key={c.campaignUid} className="rounded bg-white px-2.5 py-1.5 border border-slate-200">
-                        <div className="font-medium text-slate-900">{c.name}</div>
+                      <li
+                        key={c.campaignUid}
+                        className="rounded-lg border border-slate-200/80 bg-slate-50/50 px-2.5 py-1.5"
+                      >
+                        <div className="font-medium text-slate-900">
+                          {c.name}
+                        </div>
                         <div className="text-slate-500">
                           {c.campaignUid} • {c.status}
                         </div>
@@ -961,59 +1107,106 @@ export function ConnectionsView({
         {/* Connections List */}
         <div className="space-y-3" data-testid="connections-list">
           {data.items.length === 0 ? (
-            <Card className="p-8 text-center text-sm text-slate-500">
+            <Card className="p-8 text-center text-xs text-slate-500">
               No MailWizz customer connections match your filter. Click{' '}
-              <strong>Add Customer Connection</strong> to onboard your first customer account.
+              <strong className="text-slate-800">
+                Add Customer Connection
+              </strong>{' '}
+              to onboard your first customer account.
             </Card>
           ) : (
             data.items.map((conn) => (
-              <Card key={conn.id} className="p-5" data-testid={`connection-card-${conn.customerSlug}`}>
+              <Card
+                key={conn.id}
+                className="p-5"
+                data-testid={`connection-card-${conn.customerSlug}`}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-base font-semibold text-slate-900">
+                      <StatusDot tone={statusBadgeTone(conn.status)} />
+                      <h2 className="text-base font-semibold tracking-tight text-slate-900">
                         {conn.customerName}
                       </h2>
-                      <Badge tone={statusBadgeTone(conn.status)}>{conn.status}</Badge>
+                      <Badge tone={statusBadgeTone(conn.status)}>
+                        {conn.status}
+                      </Badge>
                       {conn.isPrimary && <Badge tone="indigo">Primary</Badge>}
                       {conn.isDemoData && <Badge tone="amber">Demo</Badge>}
-                      {conn.isQuarantine && <Badge tone="amber">Quarantined</Badge>}
-                      {conn.syncState?.isPaused && <Badge tone="slate">Sync Paused</Badge>}
+                      {conn.isQuarantine && (
+                        <Badge tone="amber">Quarantined</Badge>
+                      )}
+                      {conn.syncState?.isPaused && (
+                        <Badge tone="slate">Sync Paused</Badge>
+                      )}
                       {conn.detectedVersion && (
-                        <Badge tone="teal">MailWizz {conn.detectedVersion}</Badge>
+                        <Badge tone="teal">
+                          MailWizz {conn.detectedVersion}
+                        </Badge>
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
                       <span>
-                        Slug: <code>{conn.customerSlug}</code>
+                        Slug:{' '}
+                        <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">
+                          {conn.customerSlug}
+                        </code>
                       </span>
                       <span>
-                        URL: <code className="text-slate-800">{conn.baseUrl}</code>
+                        URL:{' '}
+                        <code className="font-mono text-[11px] text-slate-800">
+                          {conn.baseUrl}
+                        </code>
                       </span>
                       <span>
                         API Key:{' '}
-                        <code>{conn.apiKeyMasked ?? 'none'}</code>
-                        {conn.credentialVersion ? ` (v${conn.credentialVersion})` : ''}
+                        <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">
+                          {conn.apiKeyMasked ?? 'none'}
+                        </code>
+                        {conn.credentialVersion
+                          ? ` (v${conn.credentialVersion})`
+                          : ''}
                       </span>
                       <span>
                         Auth: <code>{conn.authMode}</code>
                       </span>
                       <span>Rate: {conn.maxRequestsPerSecond} req/s</span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                      <span>Lists: {conn.counts.mailingLists.toLocaleString()}</span>
-                      <span>Subscribers: {conn.counts.subscribers.toLocaleString()}</span>
-                      <span>Campaigns: {conn.counts.campaigns.toLocaleString()}</span>
-                      <span>Cleanup Ops: {conn.counts.cleanupOperations.toLocaleString()}</span>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 tabular-nums">
+                      <span>
+                        Lists:{' '}
+                        <strong className="text-slate-700">
+                          {conn.counts.mailingLists.toLocaleString()}
+                        </strong>
+                      </span>
+                      <span>
+                        Subscribers:{' '}
+                        <strong className="text-slate-700">
+                          {conn.counts.subscribers.toLocaleString()}
+                        </strong>
+                      </span>
+                      <span>
+                        Campaigns:{' '}
+                        <strong className="text-slate-700">
+                          {conn.counts.campaigns.toLocaleString()}
+                        </strong>
+                      </span>
+                      <span>
+                        Cleanup Ops:{' '}
+                        <strong className="text-slate-700">
+                          {conn.counts.cleanupOperations.toLocaleString()}
+                        </strong>
+                      </span>
                       {conn.health?.lastCheckedAt && (
                         <span>
-                          Last Health: {new Date(conn.health.lastCheckedAt).toLocaleString()} (
-                          {conn.health.lastLatencyMs ?? 0}ms)
+                          Last Health:{' '}
+                          {new Date(conn.health.lastCheckedAt).toLocaleString()}{' '}
+                          ({conn.health.lastLatencyMs ?? 0}ms)
                         </span>
                       )}
                     </div>
                     {conn.health?.lastErrorSafe && (
-                      <div className="text-xs text-rose-700">
+                      <div className="text-xs font-medium text-rose-700">
                         Last safe error: {conn.health.lastErrorSafe}
                       </div>
                     )}
@@ -1024,7 +1217,11 @@ export function ConnectionsView({
                       type="button"
                       size="sm"
                       variant="outline"
-                      disabled={loading || conn.isQuarantine || !conn.hasActiveCredential}
+                      disabled={
+                        loading ||
+                        conn.isQuarantine ||
+                        !conn.hasActiveCredential
+                      }
                       onClick={() => void handleValidate(conn)}
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -1034,7 +1231,12 @@ export function ConnectionsView({
                       type="button"
                       size="sm"
                       variant="outline"
-                      disabled={loading || conn.isQuarantine || !conn.isEnabled || !conn.hasActiveCredential}
+                      disabled={
+                        loading ||
+                        conn.isQuarantine ||
+                        !conn.isEnabled ||
+                        !conn.hasActiveCredential
+                      }
                       onClick={() => void handleInspectSample(conn)}
                     >
                       <Eye className="h-3.5 w-3.5" />
@@ -1058,13 +1260,13 @@ export function ConnectionsView({
                     </Button>
                     <Link
                       href={`/compatibility?customerConnectionId=${encodeURIComponent(conn.id)}`}
-                      className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      className="inline-flex items-center rounded-lg border border-slate-300/90 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50"
                     >
                       Compatibility
                     </Link>
                     <Link
                       href={`/?customerConnectionId=${encodeURIComponent(conn.id)}`}
-                      className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      className="inline-flex items-center rounded-lg border border-slate-300/90 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50"
                     >
                       Overview
                     </Link>
@@ -1108,7 +1310,9 @@ export function ConnectionsView({
                             void patchConnection(
                               conn.id,
                               {
-                                action: conn.syncState?.isPaused ? 'RESUME_SYNC' : 'PAUSE_SYNC',
+                                action: conn.syncState?.isPaused
+                                  ? 'RESUME_SYNC'
+                                  : 'PAUSE_SYNC',
                               },
                               conn.syncState?.isPaused
                                 ? `Resumed sync for "${conn.customerName}".`
@@ -1136,7 +1340,10 @@ export function ConnectionsView({
                           onClick={() =>
                             void patchConnection(
                               conn.id,
-                              { action: 'SET_ENABLED', isEnabled: !conn.isEnabled },
+                              {
+                                action: 'SET_ENABLED',
+                                isEnabled: !conn.isEnabled,
+                              },
                               conn.isEnabled
                                 ? `Disabled customer connection "${conn.customerName}".`
                                 : `Enabled customer connection "${conn.customerName}".`

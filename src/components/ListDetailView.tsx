@@ -11,7 +11,14 @@ import {
   Search,
 } from 'lucide-react';
 import { AppShell } from './AppShell';
-import { Badge, Button, Card, HygieneStatusBadge } from './ui';
+import {
+  Badge,
+  Button,
+  Card,
+  HygieneStatusBadge,
+  StatusDot,
+  type BadgeTone,
+} from './ui';
 
 interface ListDetailResponse {
   list: {
@@ -100,7 +107,9 @@ export function ListDetailView({
         hygiene: hygieneFilter,
       });
       if (query.trim()) sp.set('q', query.trim());
-      const res = await fetch(`/api/lists/${encodeURIComponent(listId)}?${sp.toString()}`);
+      const res = await fetch(
+        `/api/lists/${encodeURIComponent(listId)}?${sp.toString()}`
+      );
       if (res.ok) {
         setData((await res.json()) as ListDetailResponse);
       }
@@ -134,24 +143,25 @@ export function ListDetailView({
       phase1ReadOnly={phase1ReadOnly}
     >
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-5">
           <div>
             <Link
               href="/"
-              className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:underline"
+              className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               Back to Overview
             </Link>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-slate-900">
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
                 {data?.list.name ?? 'Loading list...'}
               </h1>
               {data?.list.isDemoData && <Badge tone="amber">Demo Data</Badge>}
             </div>
             {data && (
-              <p className="text-xs text-slate-500">
-                UID: <code>{data.list.listUid}</code> • {data.list.reconciliationNote}
+              <p className="mt-0.5 text-xs text-slate-500">
+                UID: <code className="font-mono">{data.list.listUid}</code> •{' '}
+                {data.list.reconciliationNote}
               </p>
             )}
           </div>
@@ -160,18 +170,22 @@ export function ListDetailView({
             <div className="flex flex-wrap items-center gap-2">
               <a
                 href={`/api/exports/subscribers?listId=${encodeURIComponent(data.list.id)}&format=csv&encrypted=true${
-                  hygieneFilter !== 'ALL' ? `&hygieneStatus=${hygieneFilter}` : ''
+                  hygieneFilter !== 'ALL'
+                    ? `&hygieneStatus=${hygieneFilter}`
+                    : ''
                 }`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300/90 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50"
               >
                 <Download className="h-3.5 w-3.5" />
                 Encrypted Export
               </a>
               <a
                 href={`/api/exports/subscribers?listId=${encodeURIComponent(data.list.id)}&format=csv&encrypted=false${
-                  hygieneFilter !== 'ALL' ? `&hygieneStatus=${hygieneFilter}` : ''
+                  hygieneFilter !== 'ALL'
+                    ? `&hygieneStatus=${hygieneFilter}`
+                    : ''
                 }`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300/90 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50"
               >
                 <Download className="h-3.5 w-3.5" />
                 CSV Export
@@ -182,18 +196,47 @@ export function ListDetailView({
 
         {/* List Hygiene Breakdown Pills */}
         {data && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-            {[
-              { label: 'Engaged (Click+)', key: 'ENGAGED_STRONG', tone: 'text-emerald-700' },
-              { label: 'Open-Only', key: 'ENGAGED_OPEN_ONLY', tone: 'text-teal-700' },
-              { label: 'Potentially Inactive', key: 'INACTIVE_CANDIDATE', tone: 'text-amber-700' },
-              { label: 'Insufficient History', key: 'INSUFFICIENT_HISTORY', tone: 'text-sky-700' },
-              { label: 'UNKNOWN History', key: 'UNKNOWN', tone: 'text-slate-700' },
-              { label: 'Hard Bounced', key: 'HARD_BOUNCED', tone: 'text-rose-700' },
-            ].map((item) => (
-              <Card key={item.key} className="p-3">
-                <div className="text-xs text-slate-500">{item.label}</div>
-                <div className={`mt-1 text-xl font-bold tabular-nums ${item.tone}`}>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {(
+              [
+                {
+                  label: 'Engaged (Click+)',
+                  key: 'ENGAGED_STRONG',
+                  tone: 'emerald' as BadgeTone,
+                },
+                {
+                  label: 'Open-Only',
+                  key: 'ENGAGED_OPEN_ONLY',
+                  tone: 'teal' as BadgeTone,
+                },
+                {
+                  label: 'Potentially Inactive',
+                  key: 'INACTIVE_CANDIDATE',
+                  tone: 'amber' as BadgeTone,
+                },
+                {
+                  label: 'Insufficient History',
+                  key: 'INSUFFICIENT_HISTORY',
+                  tone: 'sky' as BadgeTone,
+                },
+                {
+                  label: 'UNKNOWN History',
+                  key: 'UNKNOWN',
+                  tone: 'slate' as BadgeTone,
+                },
+                {
+                  label: 'Hard Bounced',
+                  key: 'HARD_BOUNCED',
+                  tone: 'rose' as BadgeTone,
+                },
+              ] as const
+            ).map((item) => (
+              <Card key={item.key} className="p-3.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                  <StatusDot tone={item.tone} />
+                  <span className="truncate">{item.label}</span>
+                </div>
+                <div className="mt-1.5 text-xl font-semibold tabular-nums text-slate-900">
                   {(data.hygieneCounts[item.key] ?? 0).toLocaleString()}
                 </div>
               </Card>
@@ -204,19 +247,19 @@ export function ListDetailView({
         {/* Native MailWizz Segments */}
         {data && data.list.segments.length > 0 && (
           <Card className="p-4">
-            <h2 className="mb-2 text-sm font-semibold text-slate-900">
+            <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-700">
               Discovered MailWizz Native Segments ({data.list.segments.length})
             </h2>
             <div className="flex flex-wrap gap-2">
               {data.list.segments.map((seg) => (
                 <div
                   key={seg.id}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+                  className="rounded-lg border border-slate-200/80 bg-slate-50/60 px-3 py-2 text-xs"
                 >
                   <div className="font-medium text-slate-900">{seg.name}</div>
                   <div className="text-slate-500">
-                    UID: <code>{seg.segmentUid}</code> • Est. subscribers:{' '}
-                    {seg.apiSubscribersCount ?? 0}
+                    UID: <code className="font-mono">{seg.segmentUid}</code> •
+                    Est. subscribers: {seg.apiSubscribersCount ?? 0}
                   </div>
                 </div>
               ))}
@@ -226,8 +269,8 @@ export function ListDetailView({
 
         {/* Search, Filter & Sortable Subscribers Table */}
         <Card className="overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 p-4">
-            <div className="relative flex-1 min-w-[220px] max-w-md">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/60 p-4">
+            <div className="relative min-w-[220px] max-w-md flex-1">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="search"
@@ -238,7 +281,7 @@ export function ListDetailView({
                   setQuery(e.target.value);
                 }}
                 placeholder="Search email, name, or subscriber UID..."
-                className="w-full rounded-lg border border-slate-300 bg-white py-1.5 pl-9 pr-3 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none"
+                className="w-full rounded-lg border border-slate-300/90 bg-white py-1.5 pl-9 pr-3 text-xs text-slate-900 shadow-2xs focus:border-indigo-600 focus:outline-none"
               />
             </div>
 
@@ -250,7 +293,7 @@ export function ListDetailView({
                   setPage(1);
                   setStatusFilter(e.target.value);
                 }}
-                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700"
+                className="rounded-lg border border-slate-300/90 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-2xs"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="CONFIRMED">Confirmed</option>
@@ -266,13 +309,15 @@ export function ListDetailView({
                   setPage(1);
                   setHygieneFilter(e.target.value);
                 }}
-                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700"
+                className="rounded-lg border border-slate-300/90 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-2xs"
               >
                 <option value="ALL">All Hygiene Classes</option>
                 <option value="ENGAGED_STRONG">Engaged (Click/Strong)</option>
                 <option value="ENGAGED_OPEN_ONLY">Engaged (Open-Only)</option>
                 <option value="INACTIVE_CANDIDATE">Potentially Inactive</option>
-                <option value="INSUFFICIENT_HISTORY">Insufficient History</option>
+                <option value="INSUFFICIENT_HISTORY">
+                  Insufficient History
+                </option>
                 <option value="UNKNOWN">UNKNOWN History</option>
                 <option value="HARD_BOUNCED">Hard Bounced</option>
                 <option value="COMPLAINED">Complained</option>
@@ -285,7 +330,7 @@ export function ListDetailView({
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 bg-white text-xs font-semibold uppercase text-slate-500">
+              <thead className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3">
                     <button
@@ -311,7 +356,8 @@ export function ListDetailView({
                       onClick={() => toggleSort('hygieneStatus')}
                       className="inline-flex items-center gap-1 hover:text-slate-900"
                     >
-                      Hygiene Classification <ArrowUpDown className="h-3 w-3" />
+                      Hygiene Classification{' '}
+                      <ArrowUpDown className="h-3 w-3" />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-right">
@@ -344,27 +390,40 @@ export function ListDetailView({
                   <th className="px-4 py-3">Reason / Coverage</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-200/80">
                 {loading && !data ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    <td
+                      colSpan={7}
+                      className="px-4 py-8 text-center text-xs text-slate-500"
+                    >
                       Loading subscribers...
                     </td>
                   </tr>
                 ) : !data || data.subscribers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    <td
+                      colSpan={7}
+                      className="px-4 py-8 text-center text-xs text-slate-500"
+                    >
                       No subscribers match the current filters.
                     </td>
                   </tr>
                 ) : (
                   data.subscribers.map((sub) => (
-                    <tr key={sub.id} className="hover:bg-slate-50">
+                    <tr
+                      key={sub.id}
+                      className="transition-colors hover:bg-slate-50/70"
+                    >
                       <td className="px-4 py-3">
-                        <div className="font-medium text-slate-900">{sub.email}</div>
+                        <div className="font-medium text-slate-900">
+                          {sub.email}
+                        </div>
                         <div className="text-xs text-slate-500">
-                          {[sub.firstName, sub.lastName].filter(Boolean).join(' ') || 'No name'}{' '}
-                          • <code>{sub.subscriberUid}</code>
+                          {[sub.firstName, sub.lastName]
+                            .filter(Boolean)
+                            .join(' ') || 'No name'}{' '}
+                          • <code className="font-mono">{sub.subscriberUid}</code>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-xs font-medium text-slate-700">
@@ -376,9 +435,13 @@ export function ListDetailView({
                       <td className="px-4 py-3 text-right tabular-nums">
                         {sub.deliveredCampaignsCount}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums">{sub.opensCount}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{sub.clicksCount}</td>
-                      <td className="px-4 py-3 text-xs text-slate-600 max-w-xs">
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {sub.opensCount}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {sub.clicksCount}
+                      </td>
+                      <td className="max-w-xs px-4 py-3 text-xs text-slate-600">
                         <div>{sub.hygieneReason}</div>
                         <div className="text-[11px] text-slate-400">
                           Coverage: {sub.historyCoverage}
@@ -392,10 +455,12 @@ export function ListDetailView({
           </div>
 
           {data && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-              <div>
-                Showing page {data.pagination.page} of {data.pagination.totalPages} (
-                {data.pagination.totalMatched.toLocaleString()} matching subscribers)
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/60 px-4 py-3 text-xs text-slate-600">
+              <div className="tabular-nums">
+                Showing page {data.pagination.page} of{' '}
+                {data.pagination.totalPages} (
+                {data.pagination.totalMatched.toLocaleString()} matching
+                subscribers)
               </div>
               <div className="flex items-center gap-2">
                 <Button

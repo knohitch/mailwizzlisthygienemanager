@@ -14,7 +14,16 @@ import {
   Upload,
 } from 'lucide-react';
 import { AppShell } from './AppShell';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from './ui';
+import {
+  AgentWorkflowStrip,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  StatusDot,
+} from './ui';
 
 export interface DeliverabilityPayload {
   generatedAt: string;
@@ -236,14 +245,16 @@ export function DeliverabilityView({
   // Alibaba form state
   const [aliAccessKeyId, setAliAccessKeyId] = useState('');
   const [aliAccessKeySecret, setAliAccessKeySecret] = useState('');
-  const [aliRegion, setAliRegion] = useState(initialData.alibabaRegion || 'ap-southeast-1');
+  const [aliRegion, setAliRegion] = useState(
+    initialData.alibabaRegion || 'ap-southeast-1'
+  );
   const [aliCsv, setAliCsv] = useState('');
 
   // Seed placement form state
   const [seedDomain, setSeedDomain] = useState('');
-  const [seedProvider, setSeedProvider] = useState<'GMAIL' | 'OUTLOOK' | 'YAHOO' | 'OTHER'>(
-    'GMAIL'
-  );
+  const [seedProvider, setSeedProvider] = useState<
+    'GMAIL' | 'OUTLOOK' | 'YAHOO' | 'OTHER'
+  >('GMAIL');
   const [seedCustomProvider, setSeedCustomProvider] = useState('');
   const [seedCampaignUid, setSeedCampaignUid] = useState('');
   const [seedPlacement, setSeedPlacement] = useState<
@@ -259,12 +270,16 @@ export function DeliverabilityView({
   const [seedNotes, setSeedNotes] = useState('');
 
   // Postmaster form state
-  const [pmDomain, setPmDomain] = useState(initialData.googlePostmasterDomain || '');
+  const [pmDomain, setPmDomain] = useState(
+    initialData.googlePostmasterDomain || ''
+  );
   const [pmToken, setPmToken] = useState('');
   const [pmStatDate, setPmStatDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
-  const [pmRep, setPmRep] = useState<'HIGH' | 'MEDIUM' | 'LOW' | 'BAD' | 'UNKNOWN'>('HIGH');
+  const [pmRep, setPmRep] = useState<
+    'HIGH' | 'MEDIUM' | 'LOW' | 'BAD' | 'UNKNOWN'
+  >('HIGH');
   const [pmSpamRatio, setPmSpamRatio] = useState('0.001');
   const [pmDkimRatio, setPmDkimRatio] = useState('0.99');
   const [pmDmarcRatio, setPmDmarcRatio] = useState('0.99');
@@ -338,7 +353,10 @@ export function DeliverabilityView({
     }
   }
 
-  async function submitAlibabaAction(payload: Record<string, unknown>, msg: string) {
+  async function submitAlibabaAction(
+    payload: Record<string, unknown>,
+    msg: string
+  ) {
     setBusy(true);
     setFeedback(null);
     try {
@@ -351,7 +369,8 @@ export function DeliverabilityView({
         body: JSON.stringify(payload),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Alibaba DirectMail request failed');
+      if (!res.ok)
+        throw new Error(json.error || 'Alibaba DirectMail request failed');
       setFeedback({ type: 'ok', text: msg });
       setAliAccessKeyId('');
       setAliAccessKeySecret('');
@@ -366,7 +385,10 @@ export function DeliverabilityView({
     }
   }
 
-  async function submitSeedAction(payload: Record<string, unknown>, msg: string) {
+  async function submitSeedAction(
+    payload: Record<string, unknown>,
+    msg: string
+  ) {
     setBusy(true);
     setFeedback(null);
     try {
@@ -379,7 +401,8 @@ export function DeliverabilityView({
         body: JSON.stringify(payload),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Seed/Postmaster request failed');
+      if (!res.ok)
+        throw new Error(json.error || 'Seed/Postmaster request failed');
       setFeedback({ type: 'ok', text: msg });
       await reloadDeliverability();
     } catch (err) {
@@ -420,14 +443,21 @@ export function DeliverabilityView({
     >
       <div className="space-y-6">
         {/* Header & Date Controls */}
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+        <div className="flex flex-col justify-between gap-4 border-b border-slate-200/80 pb-5 md:flex-row md:items-center">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
+                <Globe className="h-3 w-3 text-indigo-400" />
+                Deliverability &amp; DNS Intelligence
+              </span>
+            </div>
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
               Email Deliverability Diagnostics
             </h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Source-separated diagnostics for MailWizz 3.0.5, Alibaba Cloud DirectMail SMTP/API,
-              public DNS auth, and controlled seed inbox tests.
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
+              Source-separated diagnostics for MailWizz 3.0.5, Alibaba Cloud
+              DirectMail SMTP/API, public DNS authentication, and controlled
+              seed inbox placement tests.
             </p>
           </div>
 
@@ -435,7 +465,9 @@ export function DeliverabilityView({
             {(['30', '60', '90', '180', '365', 'ALL'] as const).map((d) => (
               <Button
                 key={d}
-                variant={selectedDays === d && !customStart ? 'primary' : 'outline'}
+                variant={
+                  selectedDays === d && !customStart ? 'primary' : 'outline'
+                }
                 size="sm"
                 disabled={busy}
                 onClick={() => {
@@ -453,14 +485,14 @@ export function DeliverabilityView({
               aria-label="Custom start date"
               value={customStart}
               onChange={(e) => setCustomStart(e.target.value)}
-              className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs"
             />
             <input
               type="date"
               aria-label="Custom end date"
               value={customEnd}
               onChange={(e) => setCustomEnd(e.target.value)}
-              className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs"
             />
             <Button
               variant="outline"
@@ -468,37 +500,51 @@ export function DeliverabilityView({
               disabled={busy}
               onClick={() => void reloadDeliverability()}
             >
-              <RefreshCw className={`mr-1 h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`mr-1 h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`}
+              />
               Apply
             </Button>
           </div>
         </div>
 
+        <AgentWorkflowStrip
+          activeStage="verify"
+          phase1ReadOnly={phase1ReadOnly}
+        />
+
         {/* Truthfulness Pipeline Disclaimer */}
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <Card className="bg-slate-50/70 p-4 text-xs text-slate-700">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <div className="space-y-1">
-              <p className="font-semibold">
-                Critical Measurement Distinction: SMTP Acceptance vs. Delivery vs. Inbox Placement
+              <p className="font-semibold text-slate-900">
+                Critical Measurement Distinction: SMTP Acceptance vs. Delivery
+                vs. Inbox Placement
               </p>
-              <p className="text-xs leading-relaxed text-amber-900">
-                1) <strong>MailWizz Processed / Alibaba SMTP Acceptance:</strong> Confirms Alibaba
-                DirectMail or the receiving MTA accepted the SMTP transaction — it{' '}
-                <strong>never guarantees</strong> recipient inbox placement. 2){' '}
-                <strong>Receiving Server Delivery:</strong> Measured via hard/soft bounces and
-                invalid-address rejections. 3) <strong>Inbox Placement (Primary vs. Spam):</strong>{' '}
-                Observable <em>only</em> in controlled test seed mailboxes you inspect or aggregate
-                Google Postmaster domain signals — arbitrary subscriber folders cannot be read.
+              <p className="leading-relaxed text-slate-600">
+                1){' '}
+                <strong>
+                  MailWizz Processed / Alibaba SMTP Acceptance:
+                </strong>{' '}
+                Confirms Alibaba DirectMail or the receiving MTA accepted the
+                SMTP transaction — it <strong>never guarantees</strong>{' '}
+                recipient inbox placement. 2){' '}
+                <strong>Receiving Server Delivery:</strong> Measured via
+                hard/soft bounces and invalid-address rejections. 3){' '}
+                <strong>Inbox Placement (Primary vs. Spam):</strong> Observable{' '}
+                <em>only</em> in controlled test seed mailboxes you inspect or
+                aggregate Google Postmaster domain signals — arbitrary
+                subscriber folders cannot be read.
               </p>
             </div>
           </div>
-        </div>
+        </Card>
 
         {feedback && (
           <div
             role="status"
-            className={`rounded-lg border px-4 py-3 text-sm ${
+            className={`rounded-lg border px-4 py-2.5 text-xs font-medium ${
               feedback.type === 'ok'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
                 : 'border-rose-200 bg-rose-50 text-rose-900'
@@ -509,7 +555,7 @@ export function DeliverabilityView({
         )}
 
         {/* Section Focus Selector */}
-        <div className="flex flex-wrap gap-2">
+        <div className="inline-flex flex-wrap gap-1 rounded-xl border border-slate-200/90 bg-white p-1 shadow-2xs">
           {(
             [
               ['ALL', 'All Sections'],
@@ -526,7 +572,7 @@ export function DeliverabilityView({
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                 activeTab === id
                   ? 'bg-slate-900 text-white'
-                  : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
               {label}
@@ -542,16 +588,18 @@ export function DeliverabilityView({
               <Card>
                 <CardContent className="pt-5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                      <StatusDot tone="sky" />
                       Emails Processed ({data.kpis.campaignsCount} campaigns)
                     </span>
                     <Badge tone="sky">{data.kpis.sourceLabel}</Badge>
                   </div>
-                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900">
                     {data.kpis.processedCount.toLocaleString()}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    SMTP Accepted: {data.kpis.smtpAcceptedCount.toLocaleString()} (
+                    SMTP Accepted:{' '}
+                    {data.kpis.smtpAcceptedCount.toLocaleString()} (
                     {data.kpis.smtpAcceptanceRatePct}%)
                   </p>
                 </CardContent>
@@ -560,12 +608,13 @@ export function DeliverabilityView({
               <Card>
                 <CardContent className="pt-5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                      <StatusDot tone="amber" />
                       Delivery Failures &amp; Bounces
                     </span>
                     <Badge tone="amber">MailWizz Bounces</Badge>
                   </div>
-                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900">
                     {data.kpis.bounceRatePct}%
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
@@ -579,17 +628,18 @@ export function DeliverabilityView({
               <Card>
                 <CardContent className="pt-5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                      <StatusDot tone="emerald" />
                       Tracked Opens &amp; Clicks (CTR)
                     </span>
                     <Badge tone="emerald">Engagement</Badge>
                   </div>
-                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900">
                     {data.kpis.openRatePct}% / {data.kpis.clickThroughRatePct}%
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Unique Opens: {data.kpis.uniqueOpensCount.toLocaleString()} · Clicks:{' '}
-                    {data.kpis.uniqueClicksCount.toLocaleString()}
+                    Unique Opens: {data.kpis.uniqueOpensCount.toLocaleString()}{' '}
+                    · Clicks: {data.kpis.uniqueClicksCount.toLocaleString()}
                   </p>
                 </CardContent>
               </Card>
@@ -597,17 +647,19 @@ export function DeliverabilityView({
               <Card>
                 <CardContent className="pt-5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                      <StatusDot tone="rose" />
                       Complaints &amp; Unsubscribes
                     </span>
                     <Badge tone="rose">Reputation Signals</Badge>
                   </div>
-                  <p className="mt-2 text-2xl font-bold text-slate-900">
-                    {data.kpis.complaintRatePct}% / {data.kpis.unsubscribeRatePct}%
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900">
+                    {data.kpis.complaintRatePct}% /{' '}
+                    {data.kpis.unsubscribeRatePct}%
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Complaints: {data.kpis.complaintsCount.toLocaleString()} · Unsubs:{' '}
-                    {data.kpis.unsubscribesCount.toLocaleString()}
+                    Complaints: {data.kpis.complaintsCount.toLocaleString()} ·
+                    Unsubs: {data.kpis.unsubscribesCount.toLocaleString()}
                   </p>
                 </CardContent>
               </Card>
@@ -619,7 +671,7 @@ export function DeliverabilityView({
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="text-base">
+                    <CardTitle>
                       Sending Volume vs. Open Rate &amp; Click Rate
                     </CardTitle>
                     <Badge tone={isDemoMode ? 'amber' : 'sky'}>
@@ -629,7 +681,7 @@ export function DeliverabilityView({
                 </CardHeader>
                 <CardContent>
                   {trends.length === 0 ? (
-                    <p className="text-sm text-slate-500">
+                    <p className="text-xs text-slate-500">
                       No campaign statistics found in the selected date window.
                     </p>
                   ) : (
@@ -642,7 +694,10 @@ export function DeliverabilityView({
                       >
                         {trends.map((pt, i) => {
                           const xStep = 560 / Math.max(1, trends.length);
-                          const barW = Math.max(8, Math.min(28, xStep * 0.55));
+                          const barW = Math.max(
+                            8,
+                            Math.min(28, xStep * 0.55)
+                          );
                           const x = 25 + i * xStep;
                           const barH = (pt.volume / maxVol) * 140;
                           return (
@@ -677,22 +732,28 @@ export function DeliverabilityView({
                               strokeWidth="2.5"
                               points={trends
                                 .map((pt, i) => {
-                                  const xStep = 560 / Math.max(1, trends.length);
+                                  const xStep =
+                                    560 / Math.max(1, trends.length);
                                   const x = 25 + i * xStep + 10;
-                                  const y = 165 - Math.min(100, pt.openRatePct) * 1.4;
+                                  const y =
+                                    165 -
+                                    Math.min(100, pt.openRatePct) * 1.4;
                                   return `${x},${y}`;
                                 })
                                 .join(' ')}
                             />
                             <polyline
                               fill="none"
-                              stroke="#2563eb"
+                              stroke="#4f46e5"
                               strokeWidth="2.5"
                               points={trends
                                 .map((pt, i) => {
-                                  const xStep = 560 / Math.max(1, trends.length);
+                                  const xStep =
+                                    560 / Math.max(1, trends.length);
                                   const x = 25 + i * xStep + 10;
-                                  const y = 165 - Math.min(100, pt.clickRatePct * 4) * 1.4;
+                                  const y =
+                                    165 -
+                                    Math.min(100, pt.clickRatePct * 4) * 1.4;
                                   return `${x},${y}`;
                                 })
                                 .join(' ')}
@@ -710,7 +771,7 @@ export function DeliverabilityView({
                           Open Rate %
                         </span>
                         <span className="inline-flex items-center gap-1.5">
-                          <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+                          <span className="h-2.5 w-2.5 rounded-full bg-indigo-600" />
                           Click Rate % (scaled 4x)
                         </span>
                       </div>
@@ -723,7 +784,7 @@ export function DeliverabilityView({
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="text-base">
+                    <CardTitle>
                       Bounce Rate &amp; Complaint Rate Over Time
                     </CardTitle>
                     <Badge tone="rose">MailWizz Campaigns</Badge>
@@ -731,8 +792,9 @@ export function DeliverabilityView({
                 </CardHeader>
                 <CardContent>
                   {trends.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      No campaign bounce/complaint trend data in the selected window.
+                    <p className="text-xs text-slate-500">
+                      No campaign bounce/complaint trend data in the selected
+                      window.
                     </p>
                   ) : (
                     <div className="space-y-3">
@@ -750,9 +812,12 @@ export function DeliverabilityView({
                               strokeWidth="2.5"
                               points={trends
                                 .map((pt, i) => {
-                                  const xStep = 560 / Math.max(1, trends.length);
+                                  const xStep =
+                                    560 / Math.max(1, trends.length);
                                   const x = 25 + i * xStep + 10;
-                                  const y = 165 - Math.min(25, pt.bounceRatePct) * 5.6;
+                                  const y =
+                                    165 -
+                                    Math.min(25, pt.bounceRatePct) * 5.6;
                                   return `${x},${y}`;
                                 })
                                 .join(' ')}
@@ -763,9 +828,12 @@ export function DeliverabilityView({
                               strokeWidth="2.5"
                               points={trends
                                 .map((pt, i) => {
-                                  const xStep = 560 / Math.max(1, trends.length);
+                                  const xStep =
+                                    560 / Math.max(1, trends.length);
                                   const x = 25 + i * xStep + 10;
-                                  const y = 165 - Math.min(5, pt.complaintRatePct) * 28;
+                                  const y =
+                                    165 -
+                                    Math.min(5, pt.complaintRatePct) * 28;
                                   return `${x},${y}`;
                                 })
                                 .join(' ')}
@@ -775,8 +843,10 @@ export function DeliverabilityView({
                         {trends.map((pt, i) => {
                           const xStep = 560 / Math.max(1, trends.length);
                           const x = 25 + i * xStep + 10;
-                          const yb = 165 - Math.min(25, pt.bounceRatePct) * 5.6;
-                          const yc = 165 - Math.min(5, pt.complaintRatePct) * 28;
+                          const yb =
+                            165 - Math.min(25, pt.bounceRatePct) * 5.6;
+                          const yc =
+                            165 - Math.min(5, pt.complaintRatePct) * 28;
                           return (
                             <g key={`bc-${i}`}>
                               <circle cx={x} cy={yb} r={3.5} fill="#d97706">
@@ -819,7 +889,7 @@ export function DeliverabilityView({
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="text-base">
+                    <CardTitle>
                       Engagement by Recipient Email Domain (Top 10)
                     </CardTitle>
                     <Badge tone="slate">Subscriber DB</Badge>
@@ -840,21 +910,33 @@ export function DeliverabilityView({
                       <tbody className="divide-y divide-slate-100">
                         {data.engagementByRecipientDomain.map((d) => (
                           <tr key={d.domain}>
-                            <td className="py-2 pr-3 font-medium text-slate-900">{d.domain}</td>
-                            <td className="py-2 pr-3">{d.total.toLocaleString()}</td>
+                            <td className="py-2 pr-3 font-medium text-slate-900">
+                              {d.domain}
+                            </td>
+                            <td className="py-2 pr-3 tabular-nums">
+                              {d.total.toLocaleString()}
+                            </td>
                             <td className="py-2 pr-3 text-emerald-700">
                               <div className="flex items-center gap-1.5">
-                                <span>{d.activeRatePct}%</span>
+                                <span className="tabular-nums">
+                                  {d.activeRatePct}%
+                                </span>
                                 <span className="inline-block h-1.5 w-12 overflow-hidden rounded bg-slate-100">
                                   <span
                                     className="block h-full bg-emerald-500"
-                                    style={{ width: `${Math.min(100, d.activeRatePct)}%` }}
+                                    style={{
+                                      width: `${Math.min(100, d.activeRatePct)}%`,
+                                    }}
                                   />
                                 </span>
                               </div>
                             </td>
-                            <td className="py-2 pr-3 text-amber-700">{d.inactiveRatePct}%</td>
-                            <td className="py-2 text-rose-700">{d.bounceRatePct}%</td>
+                            <td className="py-2 pr-3 tabular-nums text-amber-700">
+                              {d.inactiveRatePct}%
+                            </td>
+                            <td className="py-2 tabular-nums text-rose-700">
+                              {d.bounceRatePct}%
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -866,23 +948,29 @@ export function DeliverabilityView({
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="text-base">
+                    <CardTitle>
                       Performance Before vs. After List Cleaning
                     </CardTitle>
-                    <Badge tone="emerald">{data.beforeAfterCleaning.sourceLabel}</Badge>
+                    <Badge tone="emerald">
+                      {data.beforeAfterCleaning.sourceLabel}
+                    </Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-xs text-slate-500">Confirmed Baseline Audience</p>
-                      <p className="mt-1 text-xl font-bold text-slate-900">
+                    <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 p-3">
+                      <p className="text-xs text-slate-500">
+                        Confirmed Baseline Audience
+                      </p>
+                      <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">
                         {data.beforeAfterCleaning.baselineConfirmedRecipients.toLocaleString()}
                       </p>
                     </div>
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                      <p className="text-xs text-emerald-700">Projected Clean Audience</p>
-                      <p className="mt-1 text-xl font-bold text-emerald-900">
+                    <div className="rounded-lg border border-emerald-200/80 bg-emerald-50/60 p-3">
+                      <p className="text-xs text-emerald-700">
+                        Projected Clean Audience
+                      </p>
+                      <p className="mt-1 text-xl font-semibold tabular-nums text-emerald-900">
                         {data.beforeAfterCleaning.projectedCleanAudience.toLocaleString()}
                       </p>
                     </div>
@@ -890,32 +978,40 @@ export function DeliverabilityView({
                   <div className="space-y-2 text-xs text-slate-600">
                     <div className="flex justify-between">
                       <span>Already Suppressed Locally:</span>
-                      <span className="font-semibold text-slate-900">
+                      <span className="font-semibold tabular-nums text-slate-900">
                         {data.beforeAfterCleaning.alreadySuppressedCount.toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Recommended Suppression (Inactive / Long-Term / Never Engaged):</span>
-                      <span className="font-semibold text-amber-700">
+                      <span>
+                        Recommended Suppression (Inactive / Long-Term / Never
+                        Engaged):
+                      </span>
+                      <span className="font-semibold tabular-nums text-amber-700">
                         {data.beforeAfterCleaning.recommendedSuppressionCount.toLocaleString()}
                       </span>
                     </div>
-                    <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
                       <div
                         className="h-full bg-emerald-600"
                         style={{
                           width: `${Math.max(
                             0,
-                            100 - data.beforeAfterCleaning.projectedVolumeReductionPct
+                            100 -
+                              data.beforeAfterCleaning
+                                .projectedVolumeReductionPct
                           )}%`,
                         }}
                       />
                     </div>
                     <p className="text-slate-500">
-                      Estimated DirectMail SMTP volume saved after suppressing inactive segments:{' '}
-                      <strong>{data.beforeAfterCleaning.projectedVolumeReductionPct}%</strong>{' '}
-                      (projected from confirmed subscriber classifications — does not represent
-                      post-send open guarantees).
+                      Estimated DirectMail SMTP volume saved after suppressing
+                      inactive segments:{' '}
+                      <strong>
+                        {data.beforeAfterCleaning.projectedVolumeReductionPct}%
+                      </strong>{' '}
+                      (projected from confirmed subscriber classifications —
+                      does not represent post-send open guarantees).
                     </p>
                   </div>
                 </CardContent>
@@ -926,9 +1022,7 @@ export function DeliverabilityView({
             <div className="grid gap-6 lg:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">
-                    Historical Performance by Mailing List
-                  </CardTitle>
+                  <CardTitle>Historical Performance by Mailing List</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
@@ -946,22 +1040,36 @@ export function DeliverabilityView({
                       <tbody className="divide-y divide-slate-100">
                         {data.listPerformance.map((l) => (
                           <tr key={l.listId}>
-                            <td className="py-2 pr-3 font-medium text-slate-900">{l.listName}</td>
-                            <td className="py-2 pr-2">{l.campaigns}</td>
-                            <td className="py-2 pr-2">{l.processed.toLocaleString()}</td>
+                            <td className="py-2 pr-3 font-medium text-slate-900">
+                              {l.listName}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums">
+                              {l.campaigns}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums">
+                              {l.processed.toLocaleString()}
+                            </td>
                             <td className="py-2 pr-2 text-emerald-700">
                               <div className="flex items-center gap-1.5">
-                                <span>{l.openRatePct}%</span>
+                                <span className="tabular-nums">
+                                  {l.openRatePct}%
+                                </span>
                                 <span className="inline-block h-1.5 w-12 overflow-hidden rounded bg-slate-100">
                                   <span
                                     className="block h-full bg-emerald-500"
-                                    style={{ width: `${Math.min(100, l.openRatePct)}%` }}
+                                    style={{
+                                      width: `${Math.min(100, l.openRatePct)}%`,
+                                    }}
                                   />
                                 </span>
                               </div>
                             </td>
-                            <td className="py-2 pr-2 text-blue-700">{l.ctrPct}%</td>
-                            <td className="py-2 text-slate-600">{l.unsubRatePct}%</td>
+                            <td className="py-2 pr-2 tabular-nums text-indigo-700">
+                              {l.ctrPct}%
+                            </td>
+                            <td className="py-2 tabular-nums text-slate-600">
+                              {l.unsubRatePct}%
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -972,12 +1080,10 @@ export function DeliverabilityView({
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">
-                    Historical Performance by Campaign
-                  </CardTitle>
+                  <CardTitle>Historical Performance by Campaign</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="max-h-72 overflow-y-auto overflow-x-auto">
+                  <div className="max-h-72 overflow-x-auto overflow-y-auto">
                     <table className="w-full text-left text-xs">
                       <thead className="border-b border-slate-200 text-slate-500">
                         <tr>
@@ -993,20 +1099,29 @@ export function DeliverabilityView({
                         {data.campaignHistory.map((c) => (
                           <tr key={c.id}>
                             <td className="py-2 pr-3">
-                              <div className="font-medium text-slate-900">{c.name}</div>
+                              <div className="font-medium text-slate-900">
+                                {c.name}
+                              </div>
                               <div className="text-[11px] text-slate-500">
-                                {c.listName} · {c.sendAt ? c.sendAt.slice(0, 10) : 'No date'}
+                                {c.listName} ·{' '}
+                                {c.sendAt ? c.sendAt.slice(0, 10) : 'No date'}
                               </div>
                             </td>
                             <td className="py-2 pr-2">
                               <Badge tone="slate">{c.sourceLabel}</Badge>
                             </td>
-                            <td className="py-2 pr-2">{c.smtpAcceptedCount.toLocaleString()}</td>
-                            <td className="py-2 pr-2">
+                            <td className="py-2 pr-2 tabular-nums">
+                              {c.smtpAcceptedCount.toLocaleString()}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums">
                               {c.hardBouncesCount}/{c.softBouncesCount}
                             </td>
-                            <td className="py-2 pr-2 text-emerald-700">{c.openRatePct}%</td>
-                            <td className="py-2 text-blue-700">{c.ctrPct}%</td>
+                            <td className="py-2 pr-2 tabular-nums text-emerald-700">
+                              {c.openRatePct}%
+                            </td>
+                            <td className="py-2 tabular-nums text-indigo-700">
+                              {c.ctrPct}%
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1023,11 +1138,13 @@ export function DeliverabilityView({
           <Card>
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="flex items-center gap-2 text-base">
+                <CardTitle className="flex items-center gap-2">
                   <Globe className="h-4 w-4 text-slate-700" />
                   Domain Authentication Diagnostics (Read-Only Public DNS)
                 </CardTitle>
-                <Badge tone="emerald">Never Auto-Edits DNS · Never Guesses DKIM Selectors</Badge>
+                <Badge tone="emerald">
+                  Never Auto-Edits DNS · Never Guesses DKIM Selectors
+                </Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -1087,9 +1204,9 @@ export function DeliverabilityView({
 
               <p className="text-xs text-slate-500">
                 <Info className="mr-1 inline h-3.5 w-3.5" />
-                If no DKIM selector is supplied, DKIM status intentionally reports{' '}
-                <strong>UNKNOWN</strong> instead of guessing arbitrary selectors. DNS lookups are
-                strictly read-only.
+                If no DKIM selector is supplied, DKIM status intentionally
+                reports <strong>UNKNOWN</strong> instead of guessing arbitrary
+                selectors. DNS lookups are strictly read-only.
               </p>
 
               {data.dnsChecks.length > 0 && (
@@ -1101,7 +1218,7 @@ export function DeliverabilityView({
                     return (
                       <div
                         key={chk.id}
-                        className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-xs"
+                        className="rounded-lg border border-slate-200/90 bg-slate-50/60 p-4 text-xs"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="font-semibold text-slate-900">
@@ -1109,29 +1226,46 @@ export function DeliverabilityView({
                             {chk.fromDomain && chk.fromDomain !== chk.domain
                               ? `(From: ${chk.fromDomain})`
                               : ''}{' '}
-                            {chk.dkimSelector ? `· selector: ${chk.dkimSelector}` : ''}
+                            {chk.dkimSelector
+                              ? `· selector: ${chk.dkimSelector}`
+                              : ''}
                           </div>
                           <span className="text-slate-500">
-                            Checked {chk.checkedAt.slice(0, 16).replace('T', ' ')} UTC by{' '}
-                            {chk.checkedByEmail}
+                            Checked{' '}
+                            {chk.checkedAt.slice(0, 16).replace('T', ' ')} UTC
+                            by {chk.checkedByEmail}
                           </span>
                         </div>
 
                         <div className="mt-3 grid gap-2 sm:grid-cols-5">
                           <div>
-                            <Badge tone={dnsTone(chk.spfStatus)}>SPF: {chk.spfStatus}</Badge>
-                            <p className="mt-1 text-slate-600">{chk.spfDetail}</p>
+                            <Badge tone={dnsTone(chk.spfStatus)} dot>
+                              SPF: {chk.spfStatus}
+                            </Badge>
+                            <p className="mt-1 text-slate-600">
+                              {chk.spfDetail}
+                            </p>
                           </div>
                           <div>
-                            <Badge tone={dnsTone(chk.dkimStatus)}>DKIM: {chk.dkimStatus}</Badge>
-                            <p className="mt-1 text-slate-600">{chk.dkimDetail}</p>
+                            <Badge tone={dnsTone(chk.dkimStatus)} dot>
+                              DKIM: {chk.dkimStatus}
+                            </Badge>
+                            <p className="mt-1 text-slate-600">
+                              {chk.dkimDetail}
+                            </p>
                           </div>
                           <div>
-                            <Badge tone={dnsTone(chk.dmarcStatus)}>DMARC: {chk.dmarcStatus}</Badge>
-                            <p className="mt-1 text-slate-600">{chk.dmarcDetail}</p>
+                            <Badge tone={dnsTone(chk.dmarcStatus)} dot>
+                              DMARC: {chk.dmarcStatus}
+                            </Badge>
+                            <p className="mt-1 text-slate-600">
+                              {chk.dmarcDetail}
+                            </p>
                           </div>
                           <div>
-                            <Badge tone={dnsTone(chk.mxStatus)}>MX: {chk.mxStatus}</Badge>
+                            <Badge tone={dnsTone(chk.mxStatus)} dot>
+                              MX: {chk.mxStatus}
+                            </Badge>
                             <p className="mt-1 text-slate-600">
                               {Array.isArray(chk.mxRecordsJson)
                                 ? `${chk.mxRecordsJson.length} MX host(s)`
@@ -1139,10 +1273,12 @@ export function DeliverabilityView({
                             </p>
                           </div>
                           <div>
-                            <Badge tone={dnsTone(chk.trackingStatus)}>
+                            <Badge tone={dnsTone(chk.trackingStatus)} dot>
                               Tracking: {chk.trackingStatus}
                             </Badge>
-                            <p className="mt-1 text-slate-600">{chk.trackingDetail}</p>
+                            <p className="mt-1 text-slate-600">
+                              {chk.trackingDetail}
+                            </p>
                           </div>
                         </div>
 
@@ -1167,12 +1303,12 @@ export function DeliverabilityView({
           <Card>
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="flex items-center gap-2 text-base">
+                <CardTitle className="flex items-center gap-2">
                   <CloudDownload className="h-4 w-4 text-slate-700" />
                   Alibaba Cloud DirectMail (Read-Only OpenAPI &amp; CSV Import)
                 </CardTitle>
                 <div className="flex items-center gap-2">
-                  <Badge tone={data.hasAlibabaCreds ? 'emerald' : 'slate'}>
+                  <Badge tone={data.hasAlibabaCreds ? 'emerald' : 'slate'} dot>
                     {data.hasAlibabaCreds
                       ? `RAM Key Configured${alibabaKeyLast4 ? ` (${alibabaKeyLast4})` : ''}`
                       : 'API Keys Not Configured'}
@@ -1181,18 +1317,20 @@ export function DeliverabilityView({
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-950">
-                Only read-only DirectMail <code>Dm/2015-11-23</code> reporting actions are
-                permitted (<code>DescAccountSummary</code>, <code>QueryDomainByParam</code>,{' '}
+              <div className="rounded-lg border border-slate-200/90 bg-slate-50/70 p-3 text-xs text-slate-700">
+                Only read-only DirectMail <code>Dm/2015-11-23</code> reporting
+                actions are permitted (<code>DescAccountSummary</code>,{' '}
+                <code>QueryDomainByParam</code>,{' '}
                 <code>SenderStatisticsByTagNameAndBatchID</code>,{' '}
-                <code>SenderStatisticsDetailByParam</code>, <code>QueryInvalidAddressByParam</code>).
-                SMTP credentials, delivery-server records, and outbound test emails can{' '}
+                <code>SenderStatisticsDetailByParam</code>,{' '}
+                <code>QueryInvalidAddressByParam</code>). SMTP credentials,
+                delivery-server records, and outbound test emails can{' '}
                 <strong>never</strong> be modified or triggered here.
               </div>
 
               <div className="grid gap-6 lg:grid-cols-2">
                 {/* RAM Read-Only API Credentials + Sync */}
-                <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+                <div className="space-y-3 rounded-lg border border-slate-200/90 p-4">
                   <h3 className="text-sm font-semibold text-slate-900">
                     1. Read-Only OpenAPI Configuration
                   </h3>
@@ -1216,10 +1354,14 @@ export function DeliverabilityView({
                       value={aliRegion}
                       onChange={(e) => setAliRegion(e.target.value)}
                       aria-label="Alibaba DirectMail Region"
-                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs"
                     >
-                      <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
-                      <option value="ap-southeast-2">ap-southeast-2 (Sydney)</option>
+                      <option value="ap-southeast-1">
+                        ap-southeast-1 (Singapore)
+                      </option>
+                      <option value="ap-southeast-2">
+                        ap-southeast-2 (Sydney)
+                      </option>
                       <option value="cn-hangzhou">cn-hangzhou</option>
                       <option value="us-east-1">us-east-1</option>
                       <option value="eu-central-1">eu-central-1</option>
@@ -1274,7 +1416,8 @@ export function DeliverabilityView({
                   </div>
                   {data.alibabaAccountStatus && (
                     <p className="text-xs text-slate-600">
-                      Account Status: <strong>{data.alibabaAccountStatus}</strong>{' '}
+                      Account Status:{' '}
+                      <strong>{data.alibabaAccountStatus}</strong>{' '}
                       {data.alibabaLastSyncedAt
                         ? `(Synced ${data.alibabaLastSyncedAt.slice(0, 16).replace('T', ' ')} UTC)`
                         : ''}
@@ -1283,13 +1426,17 @@ export function DeliverabilityView({
                 </div>
 
                 {/* Manual CSV Import */}
-                <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+                <div className="space-y-3 rounded-lg border border-slate-200/90 p-4">
                   <h3 className="text-sm font-semibold text-slate-900">
                     2. Manual DirectMail CSV Report Import
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Use when complaint FBL exports are unavailable via OpenAPI or API keys are
-                    omitted. Header columns: <code>date,domain,requests,delivered,failed,invalid_address,complaints</code>.
+                    Use when complaint FBL exports are unavailable via OpenAPI
+                    or API keys are omitted. Header columns:{' '}
+                    <code>
+                      date,domain,requests,delivered,failed,invalid_address,complaints
+                    </code>
+                    .
                   </p>
                   <textarea
                     rows={3}
@@ -1318,26 +1465,29 @@ export function DeliverabilityView({
 
               {/* DirectMail Summary & Table */}
               <div className="space-y-2">
-                <div className="flex flex-wrap gap-4 text-xs text-slate-700">
+                <div className="flex flex-wrap gap-4 text-xs tabular-nums text-slate-700">
                   <span>
-                    DirectMail Requests: <strong>{alibabaTotals.requests.toLocaleString()}</strong>
+                    DirectMail Requests:{' '}
+                    <strong>{alibabaTotals.requests.toLocaleString()}</strong>
                   </span>
                   <span>
                     SMTP Accepted/Delivered:{' '}
                     <strong>{alibabaTotals.delivered.toLocaleString()}</strong>
                   </span>
                   <span>
-                    Failed: <strong>{alibabaTotals.failed.toLocaleString()}</strong>
+                    Failed:{' '}
+                    <strong>{alibabaTotals.failed.toLocaleString()}</strong>
                   </span>
                   <span>
-                    Invalid Addresses: <strong>{alibabaTotals.invalid.toLocaleString()}</strong>
+                    Invalid Addresses:{' '}
+                    <strong>{alibabaTotals.invalid.toLocaleString()}</strong>
                   </span>
                   <span>
                     Complaints (CSV/Demo only):{' '}
                     <strong>{alibabaTotals.complaints.toLocaleString()}</strong>
                   </span>
                 </div>
-                <div className="max-h-56 overflow-y-auto overflow-x-auto">
+                <div className="max-h-56 overflow-x-auto overflow-y-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="border-b border-slate-200 text-slate-500">
                       <tr>
@@ -1355,7 +1505,9 @@ export function DeliverabilityView({
                       {data.alibabaMetrics.map((m) => (
                         <tr key={m.id}>
                           <td className="py-1.5 pr-3">{m.date}</td>
-                          <td className="py-1.5 pr-3 font-medium">{m.domainName}</td>
+                          <td className="py-1.5 pr-3 font-medium">
+                            {m.domainName}
+                          </td>
                           <td className="py-1.5 pr-3">
                             <Badge
                               tone={
@@ -1369,16 +1521,22 @@ export function DeliverabilityView({
                               {m.source}
                             </Badge>
                           </td>
-                          <td className="py-1.5 pr-2">{m.requestsCount.toLocaleString()}</td>
-                          <td className="py-1.5 pr-2">{m.deliveredCount.toLocaleString()}</td>
-                          <td className="py-1.5 pr-2 text-amber-700">
+                          <td className="py-1.5 pr-2 tabular-nums">
+                            {m.requestsCount.toLocaleString()}
+                          </td>
+                          <td className="py-1.5 pr-2 tabular-nums">
+                            {m.deliveredCount.toLocaleString()}
+                          </td>
+                          <td className="py-1.5 pr-2 tabular-nums text-amber-700">
                             {m.failedCount.toLocaleString()}
                           </td>
-                          <td className="py-1.5 pr-2 text-rose-700">
+                          <td className="py-1.5 pr-2 tabular-nums text-rose-700">
                             {m.invalidAddressCount.toLocaleString()}
                           </td>
-                          <td className="py-1.5">
-                            {m.complaintCount === null ? 'N/A (API)' : m.complaintCount}
+                          <td className="py-1.5 tabular-nums">
+                            {m.complaintCount === null
+                              ? 'N/A (API)'
+                              : m.complaintCount}
                           </td>
                         </tr>
                       ))}
@@ -1397,7 +1555,7 @@ export function DeliverabilityView({
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
+                  <CardTitle className="flex items-center gap-2">
                     <Mail className="h-4 w-4 text-slate-700" />
                     Controlled Seed Inbox Placement Log
                   </CardTitle>
@@ -1407,9 +1565,10 @@ export function DeliverabilityView({
               <CardContent className="space-y-4">
                 <p className="text-xs text-slate-600">
                   <ShieldAlert className="mr-1 inline h-3.5 w-3.5 text-amber-600" />
-                  Observed inbox placement applies strictly to your own controlled Gmail, Outlook,
-                  Yahoo, or other test seed inboxes — it never inspects arbitrary subscribers&apos;
-                  inboxes or bypasses spam filters.
+                  Observed inbox placement applies strictly to your own
+                  controlled Gmail, Outlook, Yahoo, or other test seed inboxes —
+                  it never inspects arbitrary subscribers&apos; inboxes or
+                  bypasses spam filters.
                 </p>
 
                 <form
@@ -1423,7 +1582,9 @@ export function DeliverabilityView({
                         campaignUid: seedCampaignUid,
                         recipientProvider: seedProvider,
                         customProviderName:
-                          seedProvider === 'OTHER' ? seedCustomProvider : undefined,
+                          seedProvider === 'OTHER'
+                            ? seedCustomProvider
+                            : undefined,
                         testedAt: seedTestedAt,
                         placement: seedPlacement,
                         spfPass: seedSpfPass,
@@ -1455,10 +1616,16 @@ export function DeliverabilityView({
                   <select
                     value={seedProvider}
                     onChange={(e) =>
-                      setSeedProvider(e.target.value as 'GMAIL' | 'OUTLOOK' | 'YAHOO' | 'OTHER')
+                      setSeedProvider(
+                        e.target.value as
+                          | 'GMAIL'
+                          | 'OUTLOOK'
+                          | 'YAHOO'
+                          | 'OTHER'
+                      )
                     }
                     aria-label="Recipient Mailbox Provider"
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs"
                   >
                     <option value="GMAIL">Gmail</option>
                     <option value="OUTLOOK">Outlook / Hotmail</option>
@@ -1478,7 +1645,7 @@ export function DeliverabilityView({
                       )
                     }
                     aria-label="Observed Placement Folder"
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs"
                   >
                     <option value="PRIMARY">Primary / Inbox</option>
                     <option value="PROMOTIONS">Promotions</option>
@@ -1542,13 +1709,18 @@ export function DeliverabilityView({
                     aria-label="Seed Test Notes"
                     className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs sm:col-span-2"
                   />
-                  <Button type="submit" size="sm" disabled={busy} className="sm:col-span-2">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={busy}
+                    className="sm:col-span-2"
+                  >
                     <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
                     Record Seed Test Result
                   </Button>
                 </form>
 
-                <div className="max-h-56 overflow-y-auto overflow-x-auto">
+                <div className="max-h-56 overflow-x-auto overflow-y-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="border-b border-slate-200 text-slate-500">
                       <tr>
@@ -1562,10 +1734,14 @@ export function DeliverabilityView({
                     <tbody className="divide-y divide-slate-100">
                       {data.inboxTests.map((t) => (
                         <tr key={t.id}>
-                          <td className="py-1.5 pr-2">{t.testedAt.slice(0, 10)}</td>
+                          <td className="py-1.5 pr-2">
+                            {t.testedAt.slice(0, 10)}
+                          </td>
                           <td className="py-1.5 pr-2 font-medium">
                             {t.recipientProvider}
-                            {t.customProviderName ? ` (${t.customProviderName})` : ''}
+                            {t.customProviderName
+                              ? ` (${t.customProviderName})`
+                              : ''}
                             {t.isDemoData && (
                               <Badge tone="amber" className="ml-1">
                                 DEMO
@@ -1573,13 +1749,17 @@ export function DeliverabilityView({
                             )}
                           </td>
                           <td className="py-1.5 pr-2">
-                            <Badge tone={placementTone(t.placement)}>{t.placement}</Badge>
+                            <Badge tone={placementTone(t.placement)} dot>
+                              {t.placement}
+                            </Badge>
                           </td>
                           <td className="py-1.5 pr-2 font-mono text-[11px]">
                             {t.spfPass ? 'P' : 'F'}/{t.dkimPass ? 'P' : 'F'}/
                             {t.dmarcPass ? 'P' : 'F'}
                           </td>
-                          <td className="py-1.5 text-slate-600">{t.notes || t.testDomain}</td>
+                          <td className="py-1.5 text-slate-600">
+                            {t.notes || t.testDomain}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1592,16 +1772,21 @@ export function DeliverabilityView({
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="text-base">
+                  <CardTitle>
                     Google Postmaster Tools (API v1 &amp; Guided Entry)
                   </CardTitle>
-                  <Badge tone={data.hasGooglePostmasterToken ? 'emerald' : 'slate'}>
-                    {data.hasGooglePostmasterToken ? 'OAuth Token Saved' : 'Manual / Token Ready'}
+                  <Badge
+                    tone={data.hasGooglePostmasterToken ? 'emerald' : 'slate'}
+                    dot
+                  >
+                    {data.hasGooglePostmasterToken
+                      ? 'OAuth Token Saved'
+                      : 'Manual / Token Ready'}
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                <div className="space-y-2 rounded-lg border border-slate-200/90 p-3">
                   <h3 className="text-xs font-semibold text-slate-900">
                     Authorized API Sync (<code>postmaster.readonly</code>)
                   </h3>
@@ -1677,7 +1862,7 @@ export function DeliverabilityView({
                       'Saved manual Google Postmaster observation.'
                     );
                   }}
-                  className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-3"
+                  className="grid gap-2 rounded-lg border border-slate-200/90 p-3 sm:grid-cols-3"
                 >
                   <h3 className="text-xs font-semibold text-slate-900 sm:col-span-3">
                     Guided Manual Postmaster Entry
@@ -1700,11 +1885,16 @@ export function DeliverabilityView({
                     value={pmRep}
                     onChange={(e) =>
                       setPmRep(
-                        e.target.value as 'HIGH' | 'MEDIUM' | 'LOW' | 'BAD' | 'UNKNOWN'
+                        e.target.value as
+                          | 'HIGH'
+                          | 'MEDIUM'
+                          | 'LOW'
+                          | 'BAD'
+                          | 'UNKNOWN'
                       )
                     }
                     aria-label="Postmaster Domain Reputation"
-                    className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs"
                   >
                     <option value="HIGH">Reputation: HIGH</option>
                     <option value="MEDIUM">Reputation: MEDIUM</option>
@@ -1746,12 +1936,17 @@ export function DeliverabilityView({
                     placeholder="Notes..."
                     className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
                   />
-                  <Button type="submit" size="sm" variant="outline" disabled={busy}>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                  >
                     Save Manual Entry
                   </Button>
                 </form>
 
-                <div className="max-h-48 overflow-y-auto overflow-x-auto">
+                <div className="max-h-48 overflow-x-auto overflow-y-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="border-b border-slate-200 text-slate-500">
                       <tr>
@@ -1766,9 +1961,12 @@ export function DeliverabilityView({
                       {data.postmasterStats.map((s) => (
                         <tr key={s.id}>
                           <td className="py-1.5 pr-2">{s.statDate}</td>
-                          <td className="py-1.5 pr-2 font-medium">{s.domain}</td>
+                          <td className="py-1.5 pr-2 font-medium">
+                            {s.domain}
+                          </td>
                           <td className="py-1.5 pr-2">
                             <Badge
+                              dot
                               tone={
                                 s.domainReputation === 'HIGH'
                                   ? 'emerald'
@@ -1780,13 +1978,15 @@ export function DeliverabilityView({
                               {s.domainReputation ?? 'UNKNOWN'}
                             </Badge>
                           </td>
-                          <td className="py-1.5 pr-2">
+                          <td className="py-1.5 pr-2 tabular-nums">
                             {s.userReportedSpamRatio !== null
                               ? `${(s.userReportedSpamRatio * 100).toFixed(2)}%`
                               : 'N/A'}
                           </td>
                           <td className="py-1.5">
-                            <Badge tone={s.isDemoData ? 'amber' : 'sky'}>{s.source}</Badge>
+                            <Badge tone={s.isDemoData ? 'amber' : 'sky'}>
+                              {s.source}
+                            </Badge>
                           </td>
                         </tr>
                       ))}

@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Cpu,
   Database,
+  GitCompareArrows,
   Lock,
   RefreshCw,
   ShieldAlert,
@@ -15,7 +16,17 @@ import {
   XCircle,
 } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, type BadgeTone } from '@/components/ui';
+import {
+  AgentWorkflowStrip,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  StatusDot,
+  type BadgeTone,
+} from '@/components/ui';
 import type {
   CapabilityCheckEntry,
   CompatibilityCapabilityStatus,
@@ -34,58 +45,89 @@ interface CompatibilityDashboardPayload {
 
 const VERDICT_META: Record<
   CompatibilityVerdict,
-  { tone: BadgeTone; bg: string; title: string; icon: React.ReactNode }
+  { tone: BadgeTone; title: string; icon: React.ReactNode }
 > = {
   'FULLY VERIFIED': {
     tone: 'emerald',
-    bg: 'border-emerald-200 bg-emerald-50 text-emerald-950',
     title: 'MailWizz Integration Fully Verified',
-    icon: <ShieldCheck className="h-6 w-6 text-emerald-700" />,
+    icon: <ShieldCheck className="h-5 w-5 text-emerald-600" />,
   },
   'PARTIALLY COMPATIBLE': {
     tone: 'amber',
-    bg: 'border-amber-200 bg-amber-50 text-amber-950',
     title: 'Partially Compatible — Read-Only Operations Guarded',
-    icon: <AlertTriangle className="h-6 w-6 text-amber-700" />,
+    icon: <AlertTriangle className="h-5 w-5 text-amber-600" />,
   },
   UNVERIFIED: {
     tone: 'sky',
-    bg: 'border-sky-200 bg-sky-50 text-sky-950',
-    title: 'Unverified Compatibility — Run Read-Only Check Before Remote Mutations',
-    icon: <ShieldAlert className="h-6 w-6 text-sky-700" />,
+    title:
+      'Unverified Compatibility — Run Read-Only Check Before Remote Mutations',
+    icon: <ShieldAlert className="h-5 w-5 text-sky-600" />,
   },
   INCOMPATIBLE: {
     tone: 'rose',
-    bg: 'border-rose-200 bg-rose-50 text-rose-950',
     title: 'Incompatible / Fail-Closed — Remote Mutations Locked',
-    icon: <XCircle className="h-6 w-6 text-rose-700" />,
+    icon: <XCircle className="h-5 w-5 text-rose-600" />,
   },
 };
 
 function capabilityStatusBadge(status: CompatibilityCapabilityStatus) {
   switch (status) {
     case 'VERIFIED':
-      return <Badge tone="emerald">VERIFIED</Badge>;
+      return (
+        <Badge tone="emerald" dot>
+          VERIFIED
+        </Badge>
+      );
     case 'AVAILABLE_BUT_UNTESTED':
-      return <Badge tone="sky">AVAILABLE BUT UNTESTED</Badge>;
+      return (
+        <Badge tone="sky" dot>
+          AVAILABLE BUT UNTESTED
+        </Badge>
+      );
     case 'UNSUPPORTED':
-      return <Badge tone="rose">UNSUPPORTED</Badge>;
+      return (
+        <Badge tone="rose" dot>
+          UNSUPPORTED
+        </Badge>
+      );
     case 'BLOCKED':
-      return <Badge tone="amber">BLOCKED</Badge>;
+      return (
+        <Badge tone="amber" dot>
+          BLOCKED
+        </Badge>
+      );
     case 'UNKNOWN':
     default:
-      return <Badge tone="slate">UNKNOWN</Badge>;
+      return (
+        <Badge tone="slate" dot>
+          UNKNOWN
+        </Badge>
+      );
   }
 }
 
-function connectionStatusBadge(status: CompatibilityReport['connectionStatus']) {
+function connectionStatusBadge(
+  status: CompatibilityReport['connectionStatus']
+) {
   switch (status) {
     case 'CONNECTED':
-      return <Badge tone="emerald">CONNECTED</Badge>;
+      return (
+        <Badge tone="emerald" dot>
+          CONNECTED
+        </Badge>
+      );
     case 'AUTH_FAILED':
-      return <Badge tone="rose">AUTH FAILED</Badge>;
+      return (
+        <Badge tone="rose" dot>
+          AUTH FAILED
+        </Badge>
+      );
     case 'UNREACHABLE':
-      return <Badge tone="rose">UNREACHABLE</Badge>;
+      return (
+        <Badge tone="rose" dot>
+          UNREACHABLE
+        </Badge>
+      );
     case 'NOT_CONFIGURED':
     default:
       return <Badge tone="slate">NOT CONFIGURED</Badge>;
@@ -133,7 +175,9 @@ export function CompatibilityView({
     initialData.report.versionInfo.configuredVersion ?? ''
   );
   const [notesInput, setNotesInput] = useState(initialData.configNotes ?? '');
-  const [busyAction, setBusyAction] = useState<'CHECK' | 'SAVE' | 'APPROVE' | null>(null);
+  const [busyAction, setBusyAction] = useState<
+    'CHECK' | 'SAVE' | 'APPROVE' | null
+  >(null);
   const [statusMessage, setStatusMessage] = useState<{
     type: 'ok' | 'error';
     text: string;
@@ -174,7 +218,9 @@ export function CompatibilityView({
   const criticalSyncPassed = useMemo(
     () =>
       report.connectionStatus === 'CONNECTED' &&
-      report.capabilities.filter((c) => c.criticalForSync).every((c) => c.status === 'VERIFIED'),
+      report.capabilities
+        .filter((c) => c.criticalForSync)
+        .every((c) => c.status === 'VERIFIED'),
     [report]
   );
 
@@ -183,7 +229,10 @@ export function CompatibilityView({
     report.versionInfo.configuredVersion ||
     report.versionInfo.effectiveVersion;
 
-  async function postAction(payload: Record<string, unknown>, actionKind: 'CHECK' | 'SAVE' | 'APPROVE') {
+  async function postAction(
+    payload: Record<string, unknown>,
+    actionKind: 'CHECK' | 'SAVE' | 'APPROVE'
+  ) {
     setBusyAction(actionKind);
     setStatusMessage(null);
     try {
@@ -195,7 +244,9 @@ export function CompatibilityView({
         },
         body: JSON.stringify({
           ...payload,
-          ...(selectedConnectionId ? { customerConnectionId: selectedConnectionId } : {}),
+          ...(selectedConnectionId
+            ? { customerConnectionId: selectedConnectionId }
+            : {}),
         }),
       });
       const json = (await res.json()) as {
@@ -225,7 +276,10 @@ export function CompatibilityView({
     } catch (err) {
       setStatusMessage({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Network error calling /api/compatibility.',
+        text:
+          err instanceof Error
+            ? err.message
+            : 'Network error calling /api/compatibility.',
       });
     } finally {
       setBusyAction(null);
@@ -240,15 +294,22 @@ export function CompatibilityView({
       phase1ReadOnly={data.phase1ReadOnly}
     >
       <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200/80 pb-5">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
+                <GitCompareArrows className="h-3 w-3 text-indigo-400" />
+                Protocol &amp; Contract Verification
+              </span>
+            </div>
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
               MailWizz Future-Version Compatibility &amp; Adapter Verification
             </h1>
-            <p className="mt-1 max-w-3xl text-sm text-slate-600">
-              Detects MailWizz version drift passively from official read-only responses, validates
-              data contracts without mutating remote subscribers, and enforces fail-closed mutation
-              guards whenever an unverified minor or future major version appears.
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
+              Detects MailWizz version drift passively from official read-only
+              responses, validates data contracts without mutating remote
+              subscribers, and enforces fail-closed mutation guards whenever an
+              unverified minor or future major version appears.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -258,7 +319,7 @@ export function CompatibilityView({
                 data-testid="compatibility-customer-selector"
                 value={selectedConnectionId}
                 onChange={(e) => void switchConnection(e.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                className="rounded-lg border border-slate-300/90 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 shadow-2xs"
               >
                 {connections.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -270,28 +331,36 @@ export function CompatibilityView({
             <Button
               type="button"
               variant="secondary"
+              size="sm"
               disabled={busyAction !== null}
               onClick={() => postAction({ action: 'RUN_CHECK' }, 'CHECK')}
               data-testid="run-compatibility-check"
             >
               <RefreshCw
-                className={`h-4 w-4 ${busyAction === 'CHECK' ? 'animate-spin' : ''}`}
+                className={`h-3.5 w-3.5 ${busyAction === 'CHECK' ? 'animate-spin' : ''}`}
               />
-              {busyAction === 'CHECK' ? 'Running Read-Only Check...' : 'Run Compatibility Check'}
+              {busyAction === 'CHECK'
+                ? 'Running Read-Only Check...'
+                : 'Run Compatibility Check'}
             </Button>
             <Link
               href="/connections"
-              className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex items-center rounded-lg border border-slate-300/90 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50"
             >
               Customer Connections
             </Link>
           </div>
         </div>
 
+        <AgentWorkflowStrip
+          activeStage="verify"
+          phase1ReadOnly={data.phase1ReadOnly}
+        />
+
         {statusMessage && (
           <div
             role="status"
-            className={`rounded-xl border px-4 py-3 text-sm ${
+            className={`rounded-lg border px-4 py-2.5 text-xs font-medium ${
               statusMessage.type === 'ok'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
                 : 'border-rose-200 bg-rose-50 text-rose-900'
@@ -302,33 +371,47 @@ export function CompatibilityView({
         )}
 
         {/* Overall Verdict Banner */}
-        <div
-          className={`flex flex-wrap items-center justify-between gap-4 rounded-xl border px-5 py-4 ${verdictMeta.bg}`}
+        <Card
+          className="p-5"
           data-testid="compatibility-verdict-banner"
         >
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 shrink-0">{verdictMeta.icon}</div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-base font-bold">{verdictMeta.title}</span>
-                <Badge tone={verdictMeta.tone}>{report.overallStatus}</Badge>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200/80 bg-slate-50">
+                {verdictMeta.icon}
               </div>
-              <p className="mt-1 text-xs opacity-90">
-                Read-only contract validation never sends campaigns, copies subscribers, edits segments,
-                or unsubscribes contacts. Historical engagement data stored locally remains intact across
-                MailWizz upgrades.
-              </p>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-base font-semibold tracking-tight text-slate-900">
+                    {verdictMeta.title}
+                  </span>
+                  <Badge tone={verdictMeta.tone} dot>
+                    {report.overallStatus}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-slate-600">
+                  Read-only contract validation never sends campaigns, copies
+                  subscribers, edits segments, or unsubscribes contacts.
+                  Historical engagement data stored locally remains intact
+                  across MailWizz upgrades.
+                </p>
+              </div>
+            </div>
+            <div className="text-right text-xs">
+              <div className="font-medium text-slate-500">
+                Last Verification
+              </div>
+              <div
+                className="mt-0.5 font-mono text-slate-800"
+                data-testid="last-verified-at"
+              >
+                {report.lastVerifiedAt
+                  ? new Date(report.lastVerifiedAt).toLocaleString()
+                  : 'Never verified via read-only probe'}
+              </div>
             </div>
           </div>
-          <div className="text-right text-xs">
-            <div className="font-medium">Last Verification</div>
-            <div className="mt-0.5 font-mono" data-testid="last-verified-at">
-              {report.lastVerifiedAt
-                ? new Date(report.lastVerifiedAt).toLocaleString()
-                : 'Never verified via read-only probe'}
-            </div>
-          </div>
-        </div>
+        </Card>
 
         {/* Version, Connection & Adapter Metadata Grid */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -340,7 +423,9 @@ export function CompatibilityView({
               <div className="flex items-center justify-between gap-2">
                 <span className="text-slate-500">API-Detected Version</span>
                 {report.versionInfo.detectedVersion ? (
-                  <Badge tone="emerald">{report.versionInfo.detectedVersion} (Verified Signal)</Badge>
+                  <Badge tone="emerald">
+                    {report.versionInfo.detectedVersion} (Verified Signal)
+                  </Badge>
                 ) : (
                   <Badge tone="slate">Not Exposed by API</Badge>
                 )}
@@ -351,7 +436,8 @@ export function CompatibilityView({
                   <Badge
                     tone={
                       report.versionInfo.verifiedByApiSignal &&
-                      report.versionInfo.detectedVersion === report.versionInfo.configuredVersion
+                      report.versionInfo.detectedVersion ===
+                        report.versionInfo.configuredVersion
                         ? 'teal'
                         : 'amber'
                     }
@@ -359,7 +445,8 @@ export function CompatibilityView({
                   >
                     {report.versionInfo.configuredVersion}
                     {report.versionInfo.verifiedByApiSignal &&
-                    report.versionInfo.detectedVersion === report.versionInfo.configuredVersion
+                    report.versionInfo.detectedVersion ===
+                      report.versionInfo.configuredVersion
                       ? ''
                       : ' (UNVERIFIED)'}
                   </Badge>
@@ -370,13 +457,18 @@ export function CompatibilityView({
               <div className="flex items-center justify-between gap-2">
                 <span className="text-slate-500">Approved Version</span>
                 {report.versionInfo.approvedVersion ? (
-                  <Badge tone="emerald">{report.versionInfo.approvedVersion}</Badge>
+                  <Badge tone="emerald">
+                    {report.versionInfo.approvedVersion}
+                  </Badge>
                 ) : (
                   <Badge tone="slate">Baseline 3.0.5 Only</Badge>
                 )}
               </div>
               <div className="pt-1 text-[11px] text-slate-500">
-                Classification: <span className="font-mono">{report.versionInfo.parsed.classification}</span>
+                Classification:{' '}
+                <span className="font-mono">
+                  {report.versionInfo.parsed.classification}
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -456,7 +548,10 @@ export function CompatibilityView({
         {/* Admin-Supplied Version & Approval Controls */}
         <Card>
           <CardHeader>
-            <CardTitle>Administrator Version Governance (Explicitly Marked Unverified Until Confirmed)</CardTitle>
+            <CardTitle>
+              Administrator Version Governance (Explicitly Marked Unverified
+              Until Confirmed)
+            </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-6 lg:grid-cols-2">
             <form
@@ -478,13 +573,24 @@ export function CompatibilityView({
                   htmlFor="configured-version-input"
                   className="block text-xs font-semibold text-slate-700"
                 >
-                  Administrator-Supplied MailWizz Version (Marked UNVERIFIED — Admin-Supplied)
+                  Administrator-Supplied MailWizz Version (Marked UNVERIFIED —
+                  Admin-Supplied)
                 </label>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Use this when MailWizz does not expose a version header/field in API responses (for example,
-                  <code className="mx-1 rounded bg-slate-100 px-1 py-0.5">3.0.5</code>,
-                  <code className="mx-1 rounded bg-slate-100 px-1 py-0.5">3.1.2</code>, or
-                  <code className="mx-1 rounded bg-slate-100 px-1 py-0.5">4.0.0</code>). Never invents an API endpoint.
+                  Use this when MailWizz does not expose a version header/field
+                  in API responses (for example,
+                  <code className="mx-1 rounded bg-slate-100 px-1 py-0.5">
+                    3.0.5
+                  </code>
+                  ,
+                  <code className="mx-1 rounded bg-slate-100 px-1 py-0.5">
+                    3.1.2
+                  </code>
+                  , or
+                  <code className="mx-1 rounded bg-slate-100 px-1 py-0.5">
+                    4.0.0
+                  </code>
+                  ). Never invents an API endpoint.
                 </p>
                 <input
                   id="configured-version-input"
@@ -512,8 +618,15 @@ export function CompatibilityView({
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="submit" variant="primary" size="sm" disabled={busyAction !== null}>
-                  {busyAction === 'SAVE' ? 'Saving...' : 'Save Configured Version (UNVERIFIED)'}
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  disabled={busyAction !== null}
+                >
+                  {busyAction === 'SAVE'
+                    ? 'Saving...'
+                    : 'Save Configured Version (UNVERIFIED)'}
                 </Button>
                 {configuredInput && (
                   <Button
@@ -539,22 +652,30 @@ export function CompatibilityView({
               </div>
             </form>
 
-            <div className="flex flex-col justify-between rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-700">
+            <div className="flex flex-col justify-between rounded-xl border border-slate-200/90 bg-slate-50/60 p-4 text-xs text-slate-700">
               <div className="space-y-2">
-                <div className="font-semibold text-slate-900">Guarded Version Approval</div>
-                <p className="text-slate-600">
-                  When MailWizz upgrades to a new <code className="rounded bg-white px-1">3.1+</code> minor version,
-                  the resolver enters <strong>PROVISIONAL READ-ONLY</strong> mode until you run a connected read-only
-                  Compatibility Check that passes all 4 critical sync contracts (List Discovery, Subscriber Retrieval,
-                  Pagination, and Status Retrieval) and explicitly approve that version here. Approving a version never
-                  automatically unlocks individual mutation operations whose per-operation read prerequisites or
-                  capability checks are <code className="rounded bg-white px-1">UNSUPPORTED</code>,{' '}
+                <div className="font-semibold text-slate-900">
+                  Guarded Version Approval
+                </div>
+                <p className="leading-relaxed text-slate-600">
+                  When MailWizz upgrades to a new{' '}
+                  <code className="rounded bg-white px-1">3.1+</code> minor
+                  version, the resolver enters{' '}
+                  <strong>PROVISIONAL READ-ONLY</strong> mode until you run a
+                  connected read-only Compatibility Check that passes all 4
+                  critical sync contracts (List Discovery, Subscriber Retrieval,
+                  Pagination, and Status Retrieval) and explicitly approve that
+                  version here. Approving a version never automatically unlocks
+                  individual mutation operations whose per-operation read
+                  prerequisites or capability checks are{' '}
+                  <code className="rounded bg-white px-1">UNSUPPORTED</code>,{' '}
                   <code className="rounded bg-white px-1">BLOCKED</code>, or{' '}
                   <code className="rounded bg-white px-1">UNKNOWN</code>.
                 </p>
                 {data.approvedAt && (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
-                    Approved <strong>{report.versionInfo.approvedVersion}</strong> by{' '}
+                    Approved{' '}
+                    <strong>{report.versionInfo.approvedVersion}</strong> by{' '}
                     <strong>{data.approvedByEmail ?? 'admin'}</strong> on{' '}
                     {new Date(data.approvedAt).toLocaleString()}.
                   </div>
@@ -564,7 +685,8 @@ export function CompatibilityView({
                 <span className="text-slate-600">
                   Target version:{' '}
                   <strong className="font-mono">
-                    {approvableVersion ?? 'Unknown — verify or set configured version'}
+                    {approvableVersion ??
+                      'Unknown — verify or set configured version'}
                   </strong>
                 </span>
                 <Button
@@ -601,13 +723,20 @@ export function CompatibilityView({
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Breaking-Update Warnings &amp; Contract Notices</CardTitle>
+                <CardTitle>
+                  Breaking-Update Warnings &amp; Contract Notices
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-xs">
                 {report.warnings.length === 0 ? (
-                  <p className="text-slate-500">No contract drift or version warnings detected.</p>
+                  <p className="text-slate-500">
+                    No contract drift or version warnings detected.
+                  </p>
                 ) : (
-                  <ul className="space-y-2" data-testid="compatibility-warnings">
+                  <ul
+                    className="space-y-2"
+                    data-testid="compatibility-warnings"
+                  >
                     {report.warnings.map((w, idx) => (
                       <li
                         key={idx}
@@ -619,8 +748,10 @@ export function CompatibilityView({
                   </ul>
                 )}
                 {report.additiveFieldsObserved.length > 0 && (
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sky-900">
-                    <strong>Additive / unknown response fields ignored cleanly:</strong>{' '}
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+                    <strong>
+                      Additive / unknown response fields ignored cleanly:
+                    </strong>{' '}
                     <span className="font-mono">
                       {report.additiveFieldsObserved.slice(0, 12).join(', ')}
                       {report.additiveFieldsObserved.length > 12
@@ -638,11 +769,16 @@ export function CompatibilityView({
               </CardHeader>
               <CardContent className="text-xs">
                 {report.requiredManualActions.length === 0 ? (
-                  <p className="text-slate-500">No manual remediation steps required right now.</p>
+                  <p className="text-slate-500">
+                    No manual remediation steps required right now.
+                  </p>
                 ) : (
                   <ol className="list-inside list-decimal space-y-2 text-slate-700">
                     {report.requiredManualActions.map((act, idx) => (
-                      <li key={idx} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <li
+                        key={idx}
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                      >
                         {act}
                       </li>
                     ))}
@@ -653,37 +789,49 @@ export function CompatibilityView({
           </div>
         )}
 
-        {/* Capability Summary Counts */}
+        {/* Capability Summary Counts (Clean Neutral Cards with Semantic Dots) */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           {(
             [
-              ['VERIFIED', 'Verified', 'text-emerald-700 bg-emerald-50 border-emerald-200'],
-              ['AVAILABLE_BUT_UNTESTED', 'Available (Untested)', 'text-sky-700 bg-sky-50 border-sky-200'],
-              ['BLOCKED', 'Blocked / Guarded', 'text-amber-700 bg-amber-50 border-amber-200'],
-              ['UNSUPPORTED', 'Unsupported', 'text-rose-700 bg-rose-50 border-rose-200'],
-              ['UNKNOWN', 'Unknown', 'text-slate-700 bg-slate-50 border-slate-200'],
+              ['VERIFIED', 'Verified', 'emerald'],
+              [
+                'AVAILABLE_BUT_UNTESTED',
+                'Available (Untested)',
+                'sky',
+              ],
+              ['BLOCKED', 'Blocked / Guarded', 'amber'],
+              ['UNSUPPORTED', 'Unsupported', 'rose'],
+              ['UNKNOWN', 'Unknown', 'slate'],
             ] as const
-          ).map(([statusKey, label, cls]) => (
-            <div key={statusKey} className={`rounded-xl border px-4 py-3 ${cls}`}>
-              <div className="text-[11px] font-semibold uppercase tracking-wide">{label}</div>
-              <div className="mt-1 text-2xl font-bold">{counts[statusKey]}</div>
-            </div>
+          ).map(([statusKey, label, tone]) => (
+            <Card key={statusKey} className="px-4 py-3">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <StatusDot tone={tone} />
+                <span className="truncate">{label}</span>
+              </div>
+              <div className="mt-1.5 text-2xl font-semibold tabular-nums text-slate-900">
+                {counts[statusKey]}
+              </div>
+            </Card>
           ))}
         </div>
 
         {/* Full 15-Capability Compatibility Matrix */}
-        <Card>
+        <Card className="overflow-hidden">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>Capabilities Matrix (15 Contracted Endpoints &amp; Workflows)</CardTitle>
+              <CardTitle>
+                Capabilities Matrix (15 Contracted Endpoints &amp; Workflows)
+              </CardTitle>
               <span className="text-xs text-slate-500">
-                Explicit states: VERIFIED • AVAILABLE_BUT_UNTESTED • UNSUPPORTED • UNKNOWN • BLOCKED
+                Explicit states: VERIFIED • AVAILABLE_BUT_UNTESTED • UNSUPPORTED
+                • UNKNOWN • BLOCKED
               </span>
             </div>
           </CardHeader>
           <CardContent className="overflow-x-auto p-0">
             <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
-              <thead className="bg-slate-50 text-[11px] font-semibold uppercase text-slate-600">
+              <thead className="bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Capability</th>
                   <th className="px-4 py-3">Endpoint / Surface</th>
@@ -694,18 +842,26 @@ export function CompatibilityView({
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {report.capabilities.map((cap: CapabilityCheckEntry) => (
-                  <tr key={cap.key} data-testid={`capability-row-${cap.key}`}>
+                  <tr
+                    key={cap.key}
+                    data-testid={`capability-row-${cap.key}`}
+                    className="hover:bg-slate-50/60"
+                  >
                     <td className="px-4 py-3 align-top">
-                      <div className="font-semibold text-slate-900">{cap.label}</div>
-                      <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-slate-500">
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">{cap.key}</span>
+                      <div className="font-semibold text-slate-900">
+                        {cap.label}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-slate-500">
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">
+                          {cap.key}
+                        </span>
                         {cap.criticalForSync && (
-                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">
+                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 font-medium text-indigo-700">
                             Sync Critical
                           </span>
                         )}
                         {cap.criticalForMutations && (
-                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-800">
                             Mutation Guarded
                           </span>
                         )}
@@ -714,10 +870,10 @@ export function CompatibilityView({
                     <td className="px-4 py-3 align-top font-mono text-[11px] text-slate-600">
                       {cap.endpointOrFeature}
                     </td>
-                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                    <td className="whitespace-nowrap px-4 py-3 align-top">
                       {capabilityStatusBadge(cap.status)}
                     </td>
-                    <td className="px-4 py-3 align-top whitespace-nowrap text-slate-600">
+                    <td className="whitespace-nowrap px-4 py-3 align-top text-slate-600">
                       {cap.testedReadOnly ? 'Yes (Read-Only)' : 'No'}
                     </td>
                     <td className="px-4 py-3 align-top text-slate-700">
@@ -730,8 +886,9 @@ export function CompatibilityView({
                         </ul>
                       )}
                       {cap.additiveFieldsObserved.length > 0 && (
-                        <p className="mt-1 font-mono text-[11px] text-sky-700">
-                          Additive fields: {cap.additiveFieldsObserved.join(', ')}
+                        <p className="mt-1 font-mono text-[11px] text-slate-500">
+                          Additive fields:{' '}
+                          {cap.additiveFieldsObserved.join(', ')}
                         </p>
                       )}
                     </td>

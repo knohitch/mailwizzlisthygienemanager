@@ -3,7 +3,15 @@
 import React, { useState } from 'react';
 import { CheckCircle2, MailCheck, PlayCircle, Sparkles } from 'lucide-react';
 import { AppShell } from './AppShell';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from './ui';
+import {
+  AgentWorkflowStrip,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from './ui';
 
 interface PlanSummary {
   id: string;
@@ -40,7 +48,11 @@ export function ReengagementView({
   csrfToken: string;
   isDemoMode: boolean;
   phase1ReadOnly: boolean;
-  connections?: Array<{ id: string; customerName: string; customerSlug: string }>;
+  connections?: Array<{
+    id: string;
+    customerName: string;
+    customerSlug: string;
+  }>;
   lists: Array<{
     id: string;
     customerConnectionId?: string;
@@ -58,7 +70,9 @@ export function ReengagementView({
     : lists;
   const [plans, setPlans] = useState<PlanSummary[]>(initialPlans);
   const [name, setName] = useState('Q4 Permission Pass Re-Engagement');
-  const [listId, setListId] = useState(visibleLists[0]?.id ?? lists[0]?.id ?? '');
+  const [listId, setListId] = useState(
+    visibleLists[0]?.id ?? lists[0]?.id ?? ''
+  );
   const [windowDays, setWindowDays] = useState(14);
   const [campaignUids, setCampaignUids] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -141,24 +155,45 @@ export function ReengagementView({
       phase1ReadOnly={phase1ReadOnly}
     >
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">
+        <div className="border-b border-slate-200/80 pb-5">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
+              <MailCheck className="h-3 w-3 text-indigo-400" />
+              Permission-Pass Orchestration
+            </span>
+          </div>
+          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
             Re-Engagement Workflow (Manual Campaign Approval)
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Identify qualifying inactive contacts while excluding unsubscribed, complained, bounced, and VIP contacts. Draft permission-pass messaging, record manual MailWizz campaign approval, and evaluate renewed engagement after the response window. This application never auto-sends emails.
+          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
+            Identify qualifying inactive contacts while excluding unsubscribed,
+            complained, bounced, and VIP contacts. Draft permission-pass
+            messaging, record manual MailWizz campaign approval, and evaluate
+            renewed engagement after the response window. This application never
+            auto-sends emails.
           </p>
         </div>
+
+        <AgentWorkflowStrip
+          activeStage="execute"
+          phase1ReadOnly={phase1ReadOnly}
+        />
 
         <Card>
           <CardHeader>
             <CardTitle>Create Re-Engagement Plan</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={createPlan} className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+            <form
+              onSubmit={createPlan}
+              className="grid grid-cols-1 gap-4 sm:grid-cols-4"
+            >
               {connections.length > 0 && (
                 <div className="sm:col-span-4">
-                  <label className="block text-xs font-medium text-slate-700" htmlFor="plan-connection">
+                  <label
+                    className="block text-xs font-medium text-slate-700"
+                    htmlFor="plan-connection"
+                  >
                     Customer Connection
                   </label>
                   <select
@@ -184,7 +219,10 @@ export function ReengagementView({
                 </div>
               )}
               <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-slate-700" htmlFor="plan-name">
+                <label
+                  className="block text-xs font-medium text-slate-700"
+                  htmlFor="plan-name"
+                >
                   Plan Name
                 </label>
                 <input
@@ -197,14 +235,17 @@ export function ReengagementView({
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700" htmlFor="plan-list">
+                <label
+                  className="block text-xs font-medium text-slate-700"
+                  htmlFor="plan-list"
+                >
                   Target Mailing List
                 </label>
                 <select
                   id="plan-list"
                   value={listId}
                   onChange={(e) => setListId(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                 >
                   {visibleLists.map((l) => (
                     <option key={l.id} value={l.id}>
@@ -214,7 +255,10 @@ export function ReengagementView({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700" htmlFor="window-days">
+                <label
+                  className="block text-xs font-medium text-slate-700"
+                  htmlFor="window-days"
+                >
                   Response Window (Days)
                 </label>
                 <input
@@ -230,18 +274,20 @@ export function ReengagementView({
               <div className="sm:col-span-4">
                 <Button type="submit" disabled={loading}>
                   <Sparkles className="h-4 w-4" />
-                  {loading ? 'Selecting Safe Inactive Cohort...' : 'Create Re-Engagement Draft'}
+                  {loading
+                    ? 'Selecting Safe Inactive Cohort...'
+                    : 'Create Re-Engagement Draft'}
                 </Button>
               </div>
             </form>
 
             {error && (
-              <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+              <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800">
                 {error}
               </div>
             )}
             {message && (
-              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
                 {message}
               </div>
             )}
@@ -255,22 +301,27 @@ export function ReengagementView({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <CardTitle>{p.name}</CardTitle>
-                    <p className="text-xs text-slate-500">
-                      List: {p.mailingList.name} • Eligible Inactive: {p.eligibleCount} • Excluded:{' '}
-                      {p.excludedCount} • Window: {p.responseWindowDays} days
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      List: <strong className="text-slate-700">{p.mailingList.name}</strong> • Eligible Inactive:{' '}
+                      <strong className="tabular-nums text-slate-700">{p.eligibleCount}</strong> • Excluded:{' '}
+                      <strong className="tabular-nums text-slate-700">{p.excludedCount}</strong> • Window:{' '}
+                      {p.responseWindowDays} days
                     </p>
                   </div>
-                  <Badge tone={p.status === 'EVALUATED' ? 'emerald' : 'indigo'}>
+                  <Badge
+                    dot
+                    tone={p.status === 'EVALUATED' ? 'emerald' : 'indigo'}
+                  >
                     {p.status}
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="rounded-lg border border-slate-200/80 bg-slate-50/60 p-3">
                   <div className="text-xs font-semibold text-slate-700">
                     Suggested Subject: {p.suggestedSubject}
                   </div>
-                  <pre className="mt-2 whitespace-pre-wrap font-sans text-xs text-slate-600">
+                  <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed text-slate-600">
                     {p.suggestedBodyMarkdown}
                   </pre>
                 </div>
@@ -297,7 +348,7 @@ export function ReengagementView({
                           [p.id]: e.target.value,
                         }))
                       }
-                      className="rounded border border-slate-300 px-2.5 py-1 text-xs"
+                      className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs"
                     />
                     <Button
                       type="button"
@@ -322,8 +373,9 @@ export function ReengagementView({
 
                 {p.status === 'EVALUATED' && (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-                    Evaluated: <strong>{p.recoveredCount}</strong> restored to ACTIVE •{' '}
-                    <strong>{p.persistentlyInactiveCount}</strong> persistently inactive ready for safe suppression.
+                    Evaluated: <strong>{p.recoveredCount}</strong> restored to
+                    ACTIVE • <strong>{p.persistentlyInactiveCount}</strong>{' '}
+                    persistently inactive ready for safe suppression.
                   </div>
                 )}
               </CardContent>
